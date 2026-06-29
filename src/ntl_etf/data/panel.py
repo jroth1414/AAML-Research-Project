@@ -184,8 +184,8 @@ def align_targets(
         target_dates = [grid[j] for j in idx]
         y = returns_wide.loc[target_dates, sector].to_numpy(dtype="float64")
         as_of = grid[i + lag]
-        if min(target_dates) <= origin_t:  # strict-forward invariant (audited in P8/L2)
-            raise AssertionError("leading target not strictly forward of origin")
+        # NOTE: strict-forward (min(target) > origin) is enforced by the P8 leakage audit (L2),
+        # not raised here, so the audit can *report* a tampered release_lag=0 as a failure.
     elif spec.task == "nowcast":
         idx = [i + k for k in range(spec.horizon)]
         if max(idx) >= len(grid) or sector not in ip_wide.columns:
@@ -271,3 +271,311 @@ def screen_pairs(
             f"screen warmup end {w1.date()} not before first test {first_test.date()}"
         )
     return out
+
+
+# --------------------------------------------------------------------------------------
+# P4 / P7 — series registry, windowing engine, and the dual-view PanelDataset
+# --------------------------------------------------------------------------------------
+def pivot_ntl_wide(ntl_long: pd.DataFrame) -> pd.DataFrame:
+    """Wide NTL: index=master grid, columns=region_id, values=ntl_value (primary feature)."""
+    w = ntl_long.pivot_table(index="date", columns="region_id", values="ntl_value")
+    return w.reindex(master_grid())
+
+
+def build_series_registry(kept_pairs: pd.DataFrame) -> pd.DataFrame:
+    """One series per kept (region_id, sector) pair, with stable ids + variate grouping.
+
+    Columns: series_idx, region_id, sector, sector_group_id, variate_pos, forced_keep.
+    """
+    kept = kept_pairs[kept_pairs["kept"]].copy().reset_index(drop=True)
+    kept = kept.sort_values(["sector", "region_id"]).reset_index(drop=True)
+    kept["series_idx"] = range(len(kept))
+    sector_groups = {s: g for g, s in enumerate(sorted(kept["sector"].unique()))}
+    kept["sector_group_id"] = kept["sector"].map(sector_groups)
+    kept["variate_pos"] = kept.groupby("sector").cumcount()
+    return kept[
+        ["series_idx", "region_id", "sector", "sector_group_id", "variate_pos", "forced_keep"]
+    ]
+
+
+def compute_fold_norms(
+    ntl_wide: pd.DataFrame,
+    returns_wide: pd.DataFrame,
+    ip_wide: pd.DataFrame,
+    registry: pd.DataFrame,
+    fold,
+    spec: WindowSpec,
+) -> dict:
+    """Train-only (mu, sigma): X per region_id, y per sector. Provenance ⊆ fold.train_dates."""
+    from .splits import fit_norm_stats
+
+    train = pd.DatetimeIndex(fold.train_dates)
+    x_series = {r: ntl_wide[r] for r in registry["region_id"].unique() if r in ntl_wide.columns}
+    x_norm = fit_norm_stats(x_series, train)
+    tgt = returns_wide if spec.task == "leading" else ip_wide
+    y_series = {s: tgt[s] for s in registry["sector"].unique() if s in tgt.columns}
+    y_norm = fit_norm_stats(y_series, train)
+    return {"x": x_norm, "y": y_norm}
+
+
+def build_anchors(
+    registry: pd.DataFrame,
+    ntl_wide: pd.DataFrame,
+    returns_wide: pd.DataFrame,
+    ip_wide: pd.DataFrame,
+    spec: WindowSpec,
+    fold,
+    cfg: dict,
+) -> list[dict]:
+    """Admissible (series|group, origin_t, split) anchors for one fold.
+
+    Requires the full lookback [t-L+1..t] of the NTL input to be valid (non-NaN) AND the target
+    span (from align_targets) to be available. Split assignment uses the OUTCOME month (as_of),
+    never the input month — so a window whose input is in train but whose label is in test is
+    excluded from train.
+    """
+    grid = ntl_wide.index
+    L = spec.lookback
+    split_of = {}
+    for sp, dates in (
+        ("train", fold.train_dates),
+        ("val", fold.val_dates),
+        ("test", fold.test_dates),
+    ):
+        for d in dates:
+            split_of[pd.Timestamp(d)] = sp
+
+    def _ci_anchors(reg_rows):
+        out = []
+        for _, row in reg_rows.iterrows():
+            r, s = row["region_id"], row["sector"]
+            if r not in ntl_wide.columns:
+                continue
+            xv = ntl_wide[r]
+            for i in range(L - 1, len(grid)):
+                t = grid[i]
+                window = xv.iloc[i - L + 1 : i + 1]
+                if window.isna().any():
+                    continue
+                aligned = align_targets(t, returns_wide, ip_wide, s, spec, cfg)
+                if aligned is None:
+                    continue
+                y, meta = aligned
+                split = split_of.get(pd.Timestamp(meta["as_of_date"]))
+                if split is None:
+                    continue
+                out.append(
+                    {
+                        "view": "ci",
+                        "series_idx": int(row["series_idx"]),
+                        "region_id": r,
+                        "sector": s,
+                        "origin_t": t,
+                        "split": split,
+                        "y": y,
+                        "as_of": meta["as_of_date"],
+                        "target_dates": meta["target_dates"],
+                    }
+                )
+        return out
+
+    if spec.view == "ci":
+        return _ci_anchors(registry)
+
+    # variate view: per sector-group, gather region series (>=2 valid variates)
+    out = []
+    for (sector, gid), grp in registry.groupby(["sector", "sector_group_id"]):
+        regions_in = [
+            r for r in grp.sort_values("variate_pos")["region_id"] if r in ntl_wide.columns
+        ]
+        if len(regions_in) < 2:
+            continue
+        for i in range(L - 1, len(grid)):
+            t = grid[i]
+            mask = []
+            for r in regions_in:
+                w = ntl_wide[r].iloc[i - L + 1 : i + 1]
+                mask.append(bool(not w.isna().any()))
+            if sum(mask) < 2:
+                continue
+            aligned = align_targets(t, returns_wide, ip_wide, sector, spec, cfg)
+            if aligned is None:
+                continue
+            y, meta = aligned
+            split = split_of.get(pd.Timestamp(meta["as_of_date"]))
+            if split is None:
+                continue
+            out.append(
+                {
+                    "view": "variate",
+                    "group_idx": int(gid),
+                    "sector": sector,
+                    "region_ids": tuple(regions_in),
+                    "var_mask": tuple(mask),
+                    "origin_t": t,
+                    "split": split,
+                    "y": y,
+                    "as_of": meta["as_of_date"],
+                    "target_dates": meta["target_dates"],
+                }
+            )
+    return out
+
+
+SECTOR_ID = {t: i for i, t in enumerate(SPDR)}
+
+
+def _std(arr, mu_sigma):
+    mu, sigma = mu_sigma
+    return (np.asarray(arr, dtype="float32") - mu) / sigma
+
+
+class PanelDataset:
+    """torch Dataset yielding the P9 tensor contract for CI or variate views.
+
+    X (NTL lookback) is standardized per region with TRAIN-only stats; y (target) is standardized
+    per sector with TRAIN-only stats and ``(y_mu, y_sigma)`` is carried for de-standardized metrics.
+    Implemented without subclassing torch.utils.data.Dataset at import time (torch is imported
+    lazily in __getitem__) so the module imports even where torch is heavy.
+    """
+
+    def __init__(self, anchors, ntl_wide, registry, norms, spec: WindowSpec):
+        self.anchors = anchors
+        self.ntl_wide = ntl_wide
+        self.registry = registry
+        self.norms = norms
+        self.spec = spec
+        self.region_id_idx = {r: i for i, r in enumerate(sorted(ntl_wide.columns))}
+        self.grid = ntl_wide.index
+        self._pos = {d: i for i, d in enumerate(self.grid)}
+
+    def __len__(self):
+        return len(self.anchors)
+
+    def _window(self, region, t):
+        i = self._pos[pd.Timestamp(t)]
+        return self.ntl_wide[region].iloc[i - self.spec.lookback + 1 : i + 1].to_numpy("float32")
+
+    def __getitem__(self, idx):
+        import torch
+
+        a = self.anchors[idx]
+        L, H = self.spec.lookback, self.spec.horizon
+        sector = a["sector"]
+        y_ms = self.norms["y"].get(sector, (0.0, 1.0))
+        y_std = _std(a["y"], y_ms)
+        epoch_month = int(self._pos[pd.Timestamp(a["origin_t"])])
+        base = {
+            "y": torch.tensor(y_std, dtype=torch.float32).reshape(H),
+            "y_mu": torch.tensor(y_ms[0], dtype=torch.float32),
+            "y_sigma": torch.tensor(y_ms[1], dtype=torch.float32),
+            "sector_id": torch.tensor(SECTOR_ID.get(sector, -1), dtype=torch.long),
+            "origin_date": torch.tensor(epoch_month, dtype=torch.long),
+        }
+        if a["view"] == "ci":
+            r = a["region_id"]
+            x = _std(self._window(r, a["origin_t"]), self.norms["x"].get(r, (0.0, 1.0)))
+            base.update(
+                {
+                    "x": torch.tensor(x, dtype=torch.float32).reshape(L, 1),
+                    "region_id": torch.tensor(self.region_id_idx.get(r, -1), dtype=torch.long),
+                    "feature_id": torch.tensor(0, dtype=torch.long),
+                    "series_idx": torch.tensor(a["series_idx"], dtype=torch.long),
+                }
+            )
+        else:  # variate
+            regions = a["region_ids"]
+            cols = []
+            for r in regions:
+                w = self._window(r, a["origin_t"])
+                cols.append(_std(w, self.norms["x"].get(r, (0.0, 1.0))))
+            x = np.stack(cols, axis=1)  # (L, V)
+            base.update(
+                {
+                    "x": torch.tensor(x, dtype=torch.float32).reshape(L, len(regions)),
+                    "region_ids": torch.tensor(
+                        [self.region_id_idx.get(r, -1) for r in regions], dtype=torch.long
+                    ),
+                    "var_mask": torch.tensor(list(a["var_mask"]), dtype=torch.bool),
+                    "group_idx": torch.tensor(a["group_idx"], dtype=torch.long),
+                }
+            )
+        return base
+
+
+def make_dataloader(
+    dataset: PanelDataset, batch_size: int = 32, shuffle: bool = False, seed: int = 1414
+):
+    """Build a deterministic DataLoader (num_workers=0 for Windows-safe determinism)."""
+    import torch
+    from torch.utils.data import DataLoader
+
+    g = torch.Generator()
+    g.manual_seed(seed)
+    return DataLoader(
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0, generator=g, drop_last=False
+    )
+
+
+# --------------------------------------------------------------------------------------
+# P8 — executable leakage audit (the five invariants)
+# --------------------------------------------------------------------------------------
+def audit_panel(
+    folds,
+    ntl_wide: pd.DataFrame,
+    returns_wide: pd.DataFrame,
+    ip_wide: pd.DataFrame,
+    registry: pd.DataFrame,
+    cfg: dict,
+    screen_warmup_end: pd.Timestamp,
+) -> dict:
+    """Mechanically prove the five leakage invariants. Returns {Lk: 'pass'|'fail', ...}.
+
+    L1 norm train-only · L2 leading strictly forward · L3 no NaN window · L4 screen no test data ·
+    L5 temporal fold ordering. Designed to be FAILABLE: a tampered input (release_lag=0, norm fit
+    on the full range, screen warmup into the test era) flips the corresponding invariant.
+    """
+    from .splits import fit_norm_stats
+
+    res = {}
+    spec = WindowSpec(int(cfg.get("audit_lookback", 12)), 1, "leading", "ci")
+
+    # L5 temporal ordering
+    l5 = all(max(f.train_dates) < min(f.val_dates) < min(f.test_dates) for f in folds)
+    res["L5_temporal_ordering"] = "pass" if l5 else "fail"
+
+    # L4 screen used no test data
+    first_test = min(min(f.test_dates) for f in folds)
+    res["L4_screen_no_test"] = "pass" if screen_warmup_end < first_test else "fail"
+
+    # L1 norm provenance train-only: stats must equal a TRAIN-only recompute (and differ from full)
+    f0 = folds[0]
+    norms = compute_fold_norms(ntl_wide, returns_wide, ip_wide, registry, f0, spec)
+    region0 = registry["region_id"].iloc[0]
+    train_only = fit_norm_stats({region0: ntl_wide[region0]}, pd.DatetimeIndex(f0.train_dates))
+    full = fit_norm_stats({region0: ntl_wide[region0]}, ntl_wide.index)
+    l1 = (
+        region0 in norms["x"]
+        and abs(norms["x"][region0][0] - train_only[region0][0]) < 1e-9
+        and abs(norms["x"][region0][0] - full[region0][0]) > 1e-12
+    )
+    res["L1_norm_train_only"] = "pass" if l1 else "fail"
+
+    # L2/L3 over built anchors (across folds)
+    l2 = l3 = True
+    n_anchors = 0
+    for f in folds:
+        anchors = build_anchors(registry, ntl_wide, returns_wide, ip_wide, spec, f, cfg)
+        n_anchors += len(anchors)
+        for a in anchors:
+            if min(a["target_dates"]) <= a["origin_t"]:
+                l2 = False
+            i = ntl_wide.index.get_loc(a["origin_t"])
+            win = ntl_wide[a["region_id"]].iloc[i - spec.lookback + 1 : i + 1]
+            if win.isna().any() or not np.isfinite(a["y"]).all():
+                l3 = False
+    res["L2_release_lag_forward"] = "pass" if (l2 and n_anchors > 0) else "fail"
+    res["L3_no_nan_window"] = "pass" if (l3 and n_anchors > 0) else "fail"
+    res["_n_anchors_audited"] = n_anchors
+    res["all_pass"] = all(v == "pass" for k, v in res.items() if k.startswith("L"))
+    return res
