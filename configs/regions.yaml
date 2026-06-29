@@ -1,0 +1,5 @@
+# Populated in Phase A.1 (NTL); schema OWNED by docs/devplan/01-data-ntl.md (Task N4)
+# and the unified schema in DEVPLAN.md Appendix A.6. Phase B (panel) consumes — does not author.
+# This is a Phase-0 stub; N4 replaces it with the full region catalog.
+schema_version: 1
+regions: []
