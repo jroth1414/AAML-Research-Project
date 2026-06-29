@@ -65,3 +65,62 @@ SHA `181361D2…E84E31`.
 **Git.** 12 task-ID-prefixed commits on `phase0-setup`; merged to `main` via `--no-ff`
 ("Merge Phase 0 (setup): …"). Credentials confirmed present in `.env` (`EARTHDATA_TOKEN`,
 `FRED_API_KEY`) → Phase A can do real downloads.
+
+---
+
+## Phase A — Data acquisition (N + F) · 2026-06-29 · branch `phaseA-data-ntl`
+
+Built Phase A.1 (NTL, tasks N1–N10) and Phase A.2 (finance/macro, tasks F1–F12) on one branch
+(combined, since the long background NTL download reads the working tree). 51 offline tests +
+2 live integration smokes (FRED + NTL) green; ruff/black clean.
+
+### A.1 — NTL (VNP46A3) findings, all verified against a real tile (2020-06, h28v08)
+The N3 "TO-VERIFY" items were resolved empirically by downloading a real Singapore tile and a
+real 2-tile Yangtze region:
+- **Auth:** `earthaccess.login(strategy="environment")` works with the 672-char bearer
+  `EARTHDATA_TOKEN`. No username/password needed. Login cached once per process.
+- **HDF5 path:** the grid is `//HDFEOS/GRIDS/VIIRS_Grid_DNB_2d/Data_Fields/<layer>` (not the
+  older `VNP_Grid_DNB`); the reader matches the layer suffix, so it is version-robust.
+- **Georeferencing:** subdataset has an identity transform, so we build the affine from the
+  10°×10° Black Marble geographic tile grid (h→lon, v→lat; 2400×2400 px; 15 arc-sec). Validated
+  single-tile (Singapore) and 2-tile mosaic+clip (Yangtze, h29v05+h30v05).
+- **Fill value:** the v2 composite fill is **-999.9** (float, in the BAND tags, not dataset
+  tags) — NOT 65535 as an early draft assumed. Reader now merges band tags + GDAL nodata; fill
+  detection is float-safe (np.isclose). scale_factor=1.0, offset=0.
+- **Quality flags (the big one):** for the MONTHLY Snow_Free composite, class 0 is rare
+  (~1.6k px/tile), the bulk is classes 1 & 2, and 255 = no-retrieval. The composite is already
+  gap-filled and marks true no-data with its own -999.9 fill. So we keep quality {0,1,2} and drop
+  only 255. (Dropping {1,2} as the N3 draft assumed discarded ~all pixels → n_valid=0; fixed.)
+- **Month selection:** a CMR bbox+temporal query for month M can also return the adjacent
+  month's monthly composite, so we filter granules by the `.A{YYYY}{DOY}.` date token to keep
+  only the target month.
+- **Sanity:** Singapore 2020-06 → ntl_mean 38.0, lit_frac 0.97, frac_masked 0.06 (just ocean);
+  Yangtze → ntl_mean 8.2, frac_masked 0.008. Both plausible.
+- **Release-lag note (flag for Phase B):** the conservative 45-day stamp (`data_release_date =
+  month_end(M) + 45d`) lands in early **M+2** for 31-day months (e.g. June→Aug 14), whereas the
+  canonical Phase-B alignment constant is `RELEASE_LAG_MONTHS = 1` (target = M+1, Appendix). The
+  stamp is a diagnostic; Phase B's `lag_decision.md` reconciles whether the real VNP46A3 latency
+  (historically ~2–4 weeks) supports lag 1 or requires 2.
+- **Scale reality (flag for the user):** tiles are ~28 MB; the full 28-region × 144-month pull is
+  ~20–25 distinct tiles × 144 ≈ **80–150 GB over several hours**. Disk is fine (293 GB free). The
+  download is idempotent/resumable via `data/interim/ntl/manifest.json` and is running in the
+  background; it will not finish in one session.
+
+### A.2 — Finance/Macro (real data downloaded & validated)
+- **ETF (yfinance):** 11 tickers, month-end tz-naive log returns + 12m momentum. Ragged
+  inceptions validated exactly: XLC first return **2018-07-31**, XLRE **2015-11-30** (others
+  2013-02). XLK 2020-03 return −9.0% (COVID crash). No forward-fill across gaps.
+- **FRED IP:** all 8 nowcast-eligible series + INDPRO control resolved on their **primary** IDs
+  (IPMAN, IPDMAT, IPG211S, IPUTIL, IPG3254S, IPNCONGD, IPDCONGD, IPG334S) — every TO-VERIFY id
+  exists; no fallbacks needed. XLF/XLC/XLRE correctly excluded (no IP analog). 144 obs each.
+- **VIX:** `VIXCLS` → monthly mean/max + disruption_flag (>25); 13 disruption months over
+  2013–2024; 2020-03 flagged, 2017 calm. Table carries `vix_max` (Appendix A.2 / Risk R19).
+- **Contracts:** `transform_registry.py` pins lag/causal rules; `financial_macro_manifest.json`
+  records the release-lag + alignment contract Phase B enforces.
+
+**Verification.** `pytest -q` 51 passed (no network); `pytest -m integration` 2 passed (live FRED
+INDPRO + live NTL Singapore); ruff/black clean. Real artifacts written:
+`data/processed/{etf_returns,macro_ip,vix_monthly}.parquet` + manifests (all gitignored).
+
+**Git.** Task-ID-prefixed commits (N4, N1-N8, N9-N10, F1/F6, F2-F3, F5/F7/F9, F10, F4/F8/F12,
+F11) on `phaseA-data-ntl`.
