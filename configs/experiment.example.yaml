@@ -1,0 +1,41 @@
+# configs/experiment.example.yaml  — canonical experiment-config schema.
+# Phase D/E produce concrete configs following this shape. Project default seed is 1414
+# (multi-seed set [1414..1418]); the eval bootstrap uses purpose-seed 0 (Risk R17).
+run:
+  name: "patchtst_leading_h1"
+  seed: 1414
+  task: "leading"            # "leading" (forward 1-3m returns) | "nowcast" (contemporaneous IP)
+  horizon: 1                 # forecast horizon in months (1,2,3)
+  profile: "auto"            # auto-detected; recorded in manifest
+data:
+  panel_path: "data/processed/panel_long.parquet"
+  study_start: "2013-01-01"
+  study_end: "2024-12-31"
+  ntl_release_lag_months: 1  # CRITICAL: month-t NTL predicts month t+1 (Phase B enforces)
+seeds:
+  default: 1414
+  set: [1414, 1415, 1416, 1417, 1418]
+  bootstrap: 0               # distinct purpose-seed for the eval bootstrap
+split:
+  scheme: "walk_forward"     # rolling origin
+  min_train_months: 60
+  step_months: 12            # dense step 1 only for the final evaluation
+model:
+  name: "patchtst"           # momentum | dlinear | patchtst | itransformer | mamba | foundation
+  channel_independent: true
+  params: {}                 # model-specific (Phase D)
+train:
+  epochs: 50
+  batch_size: 32
+  lr: 5.0e-4
+  normalize: "train_only"    # CRITICAL: fit scaler on train split only (Phase B/C guard)
+  early_stopping_patience: 15
+eval:
+  metrics: ["mse", "mae", "directional_accuracy"]
+  dm_test: true              # Diebold-Mariano (Phase D)
+  alpha: 0.10
+  transaction_cost_bps: 10   # one-way; Sharpe gross & net (Phase D)
+  nowcast_target_form: "logchange"   # level | logchange (must agree with Phase F output)
+tracking:
+  mlflow: false
+  wandb: false

@@ -1,0 +1,5 @@
+# Populated in Phase A.2 (finance/macro); schema OWNED by docs/devplan/02-data-financial-macro.md
+# (Task F6). Phase B consumes — does not author. This is a Phase-0 stub; F6 fills the full
+# 11-ticker mapping (8 nowcast-eligible + INDPRO control; XLF/XLC/XLRE ineligible).
+schema_version: 1
+sectors: {}
