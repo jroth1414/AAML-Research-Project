@@ -101,10 +101,14 @@ real 2-tile Yangtze region:
   canonical Phase-B alignment constant is `RELEASE_LAG_MONTHS = 1` (target = M+1, Appendix). The
   stamp is a diagnostic; Phase B's `lag_decision.md` reconciles whether the real VNP46A3 latency
   (historically ~2–4 weeks) supports lag 1 or requires 2.
-- **Scale reality (flag for the user):** tiles are ~28 MB; the full 28-region × 144-month pull is
-  ~20–25 distinct tiles × 144 ≈ **80–150 GB over several hours**. Disk is fine (293 GB free). The
-  download is idempotent/resumable via `data/interim/ntl/manifest.json` and is running in the
-  background; it will not finish in one session.
+- **Scale reality:** tiles are ~28 MB. The full 28-region × 144-month pull **completed** in the
+  background (~3.75 h): `data/processed/ntl_features.parquet` has **4032 rows** (28×144), release-lag
+  holds on every row, `frac_masked` mean 0.3% (only 4 region-months > 0.5, Risk R27 candidates),
+  0 NaN. 4 region-months failed on a first pass (network) and succeeded on the resumable re-run
+  (manifest-driven). **Disk footprint:** the raw HDF5 cache under `data/raw/ntl/` is **~178 GB**
+  (2448 tiles), leaving ~112 GB free. The cache is gitignored and only needed for re-extraction;
+  it can be purged to reclaim disk (re-download is ~3.75 h). **Purged after extraction** (user
+  approved) — reclaimed ~178 GB (free 112 → 290 GB); `ntl_features.parquet` + the manifest remain.
 
 ### A.2 — Finance/Macro (real data downloaded & validated)
 - **ETF (yfinance):** 11 tickers, month-end tz-naive log returns + 12m momentum. Ragged
@@ -124,3 +128,44 @@ INDPRO + live NTL Singapore); ruff/black clean. Real artifacts written:
 
 **Git.** Task-ID-prefixed commits (N4, N1-N8, N9-N10, F1/F6, F2-F3, F5/F7/F9, F10, F4/F8/F12,
 F11) on `phaseA-data-ntl`.
+
+---
+
+## Phase B — Panel, walk-forward splits, leakage audit (P1–P10) · 2026-06-29 · branch `phaseB-panel-splits`
+
+Built the global channel-independent panel, the dual CI/variate dataset, walk-forward CV, and the
+**executable leakage audit** — the project's central safety gate. 74 offline tests green;
+ruff/black clean. **The real `build_panel.py` passes the No-Go gate on actual data.**
+
+**Design decisions (carry into the paper):**
+- **Primary NTL feature = `ntl_mean`** (area-normalized). `ntl_sum` (sum-of-lights) scales with the
+  ROI bbox area, which varies enormously across regions (tiny Singapore vs huge Central Valley), so
+  it is not comparable in a shared-weight global pool (Risk R25); `ntl_sum/lit_frac/p90` are kept as
+  QA diagnostics only.
+- **Month-END tz-naive grid** everywhere (Appendix A.1); loaders left-join onto it, NaN for gaps,
+  no ffill. Ragged ETF guards verified (XLRE NaN < 2015-11, XLC < 2018-06).
+- **Walk-forward:** expanding 60-month train + 12 val + 12 test, step 12 → **6 folds** on 144 months
+  (documented; motivates cross-fold pooling for DM power). Normalization is **train-only**, fit per
+  region (X) and per sector (y), de-standardized for metrics.
+- **Release-lag alignment (P5):** NTL month t → ETF return t+1 (strictly forward, `RELEASE_LAG=1`).
+  `align_targets` builds the H-step forward target; the strict-forward property is *enforced by the
+  leakage audit* (so a tampered `release_lag=0` is reported as a failure rather than crashing).
+- **No-look-ahead pair screen (P3):** correlation screen on the 2013–2017 warmup ONLY (ends before
+  the first fold's test); H2/H3 pairs force-kept. On real data **12 of 28 candidate pairs kept**
+  across **7 sectors** (XLE, XLI, XLK, XLP, XLU, XLV, XLY); XLB/XLC/XLF/XLRE had no region clearing
+  |ρ|≥0.15 on the warmup and were not force-kept — an honest limitation (those ETFs lack a screened
+  NTL predictor; H1 is evaluated on the 7 with signal). Multi-region sectors for H2: XLE(3), XLI(3),
+  XLV(2) — so H2 is not n=1 (Risk R7).
+
+**Executable leakage audit (P8 — the No-Go gate).** Five invariants, each with a negative control
+proving the assert has teeth: L1 norm train-only (vs a full-range fit), L2 release-lag strictly
+forward (vs `lag=0`), L3 no-NaN window, L4 screen used no test data (vs warmup into the test era),
+L5 temporal fold ordering (vs train∩val). **On the real panel: all five PASS** (7344 anchors audited
+across 6 folds); `experiments/manifests/leakage_audit.json` records it.
+
+**Real artifacts written:** `data/processed/panel_long.parquet` (1728 rows = 12 series × 144 months,
+P9 schema), `series_registry.parquet` (12 series), `data/interim/{pair_screen_manifest.csv,
+folds_manifest.json}`. **CI-view anchors (L=12,H=1,leading) = 1584 > 1000** (soft floors per R18).
+
+**Verification.** `pytest -q` 74 passed (no network); `build_panel.py` exits 0 with the audit ALL
+PASS; ruff/black clean. **Git:** commits P1-P2, P6, P3/P5, P4/P7, P8/P9, P10 on `phaseB-panel-splits`.
