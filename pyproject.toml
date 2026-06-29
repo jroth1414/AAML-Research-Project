@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ntl_etf"
+version = "0.1.0"
+description = "Nighttime-light NTL economic proxy for SPDR sector ETF forecasting (JHU EN.705.742)."
+requires-python = ">=3.11,<3.12"
+dynamic = ["dependencies"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["src/ntl_etf/models/_vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]   # line length handled by black
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = "src/ntl_etf/models/_vendor"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: end-to-end test that needs network/credentials (excluded by default)",
+    "network: test that touches the network (excluded by default in CI)",
+]
