@@ -76,3 +76,80 @@ def test_build_valid_masks(tmp_path):
     masks = panel.build_valid_masks(etf, ntl)
     assert set(masks["kind"]) == {"etf", "region_feat"}
     assert (masks["first_valid"] <= masks["last_valid"]).all()
+
+
+def _wide_returns():
+    grid = panel.master_grid()
+    return pd.DataFrame({t: np.arange(len(grid), dtype="float64") for t in panel.SPDR}, index=grid)
+
+
+def test_align_targets_strictly_forward():
+    ret = _wide_returns()
+    ip = ret[["XLI"]]
+    cfg = {"release_lag_months": 1}
+    spec = panel.WindowSpec(12, 1, "leading")
+    y, meta = panel.align_targets(pd.Timestamp("2018-03-31"), ret, ip, "XLE", spec, cfg)
+    assert meta["target_dates"][0] == pd.Timestamp("2018-04-30")  # strictly t+1
+    assert meta["target_dates"][0] > pd.Timestamp("2018-03-31")
+    # horizon 3 -> three consecutive forward months
+    y3, m3 = panel.align_targets(
+        pd.Timestamp("2018-03-31"), ret, ip, "XLE", panel.WindowSpec(12, 3, "leading"), cfg
+    )
+    assert len(m3["target_dates"]) == 3
+
+
+def test_align_targets_none_at_series_end():
+    ret = _wide_returns()
+    spec = panel.WindowSpec(12, 1, "leading")
+    # last grid month has no t+1 -> None
+    assert panel.align_targets(panel.master_grid()[-1], ret, ret, "XLE", spec, {}) is None
+
+
+def test_screen_forced_keep_and_no_lookahead():
+    grid = panel.master_grid()
+    rng = np.random.default_rng(0)
+    ntl = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "date": grid,
+                    "region_id": rid,
+                    "sector": "XLI",
+                    "ntl_value": rng.normal(0, 1, len(grid)),
+                }
+            )
+            for rid in ["pearl_river_delta", "weak_region"]
+        ],
+        ignore_index=True,
+    )
+    ret = _wide_returns()
+    regions = [
+        {"id": "pearl_river_delta", "candidate_sectors": ["XLI"]},
+        {"id": "weak_region", "candidate_sectors": ["XLI"]},
+    ]
+    cfg = {
+        "screen_warmup": ["2013-01", "2017-12"],
+        "screen_rho_min": 0.99,
+        "walk_forward": {"min_train_months": 60, "val_months": 12},
+    }
+    scr = panel.screen_pairs(
+        ntl, ret, ret[["XLI"]], regions, cfg, forced_pairs={("pearl_river_delta", "XLI")}
+    )
+    assert scr.set_index("region_id").loc["pearl_river_delta", "kept"]  # forced
+    assert scr.set_index("region_id").loc["pearl_river_delta", "forced_keep"]
+
+
+def test_screen_raises_on_lookahead():
+    ret = _wide_returns()
+    ntl = pd.DataFrame(
+        {"date": panel.master_grid(), "region_id": "r", "sector": "XLI", "ntl_value": 1.0}
+    )
+    regions = [{"id": "r", "candidate_sectors": ["XLI"]}]
+    # warmup ending in 2024 overlaps test periods -> must raise
+    cfg = {
+        "screen_warmup": ["2013-01", "2024-12"],
+        "screen_rho_min": 0.15,
+        "walk_forward": {"min_train_months": 60, "val_months": 12},
+    }
+    with pytest.raises(AssertionError):
+        panel.screen_pairs(ntl, ret, ret[["XLI"]], regions, cfg)

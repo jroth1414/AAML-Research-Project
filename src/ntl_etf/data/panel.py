@@ -10,14 +10,24 @@ later edits; this file currently holds the loaders + the master grid + valid mas
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 
 MASTER_START = "2013-01-31"
 MASTER_END = "2024-12-31"
 SPDR = ["XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY"]
+
+
+@dataclass(frozen=True)
+class WindowSpec:
+    lookback: int
+    horizon: int
+    task: str  # 'leading' | 'nowcast'
+    view: str = "ci"  # 'ci' | 'variate'
 
 
 class SchemaError(ValueError):
@@ -144,3 +154,120 @@ def build_valid_masks(etf_wide: pd.DataFrame, ntl_long: pd.DataFrame) -> pd.Data
             }
         )
     return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------------------
+# P5 — release-lag / publication-lag target alignment (the central leakage guard)
+# --------------------------------------------------------------------------------------
+def align_targets(
+    origin_t: pd.Timestamp,
+    returns_wide: pd.DataFrame,
+    ip_wide: pd.DataFrame,
+    sector: str,
+    spec: WindowSpec,
+    cfg: dict,
+) -> tuple[np.ndarray, dict] | None:
+    """Return (y(H,), meta) for one anchor, or None if the target span is unavailable/NaN.
+
+    leading:  target months = [t + release_lag + k for k in range(H)] (strictly forward).
+    nowcast:  target months = [t + k for k in range(H)] (contemporaneous); as_of = t + 1.
+    """
+    lag = int(cfg.get("release_lag_months", 1))
+    grid = returns_wide.index
+    if origin_t not in grid:
+        return None
+    i = grid.get_loc(origin_t)
+    if spec.task == "leading":
+        idx = [i + lag + k for k in range(spec.horizon)]
+        if max(idx) >= len(grid) or sector not in returns_wide.columns:
+            return None
+        target_dates = [grid[j] for j in idx]
+        y = returns_wide.loc[target_dates, sector].to_numpy(dtype="float64")
+        as_of = grid[i + lag]
+        if min(target_dates) <= origin_t:  # strict-forward invariant (audited in P8/L2)
+            raise AssertionError("leading target not strictly forward of origin")
+    elif spec.task == "nowcast":
+        idx = [i + k for k in range(spec.horizon)]
+        if max(idx) >= len(grid) or sector not in ip_wide.columns:
+            return None
+        target_dates = [grid[j] for j in idx]
+        y = ip_wide.loc[target_dates, sector].to_numpy(dtype="float64")
+        as_of = grid[i + 1] if i + 1 < len(grid) else grid[i]
+    else:
+        raise ValueError(f"unknown task {spec.task!r}")
+    if not np.isfinite(y).all():
+        return None
+    return y, {"target_dates": target_dates, "as_of_date": as_of}
+
+
+# --------------------------------------------------------------------------------------
+# P3 — region->sector PRE-SCREEN correlation gate (no look-ahead)
+# --------------------------------------------------------------------------------------
+def screen_pairs(
+    ntl_long: pd.DataFrame,
+    returns_wide: pd.DataFrame,
+    ip_wide: pd.DataFrame,
+    regions: list[dict],
+    cfg: dict,
+    forced_pairs: set[tuple[str, str]] | None = None,
+) -> pd.DataFrame:
+    """One row per (region_id, sector) candidate pair, screened ONLY on cfg['screen_warmup'].
+
+    Keeps a pair if |spearman| >= screen_rho_min on EITHER task, OR it is a forced (H2/H3) pair.
+    Asserts the screen window ends strictly before the first fold's test month (no look-ahead).
+    """
+    from scipy.stats import pearsonr, spearmanr
+
+    warm = cfg.get("screen_warmup", ["2013-01", "2017-12"])
+    w0 = pd.Timestamp(warm[0]) + pd.offsets.MonthEnd(0)
+    w1 = pd.Timestamp(warm[1]) + pd.offsets.MonthEnd(0)
+    rho_min = float(cfg.get("screen_rho_min", 0.15))
+    lag = int(cfg.get("release_lag_months", 1))
+    forced_pairs = forced_pairs or set()
+
+    rows = []
+    for region in regions:
+        rid = region["id"]
+        ntl_s = ntl_long[ntl_long["region_id"] == rid].set_index("date")["ntl_value"].sort_index()
+        for sector in region.get("candidate_sectors", []):
+            forced = (rid, sector) in forced_pairs
+            best = {"pearson": np.nan, "spearman": np.nan, "n_obs": 0, "task_screened": ""}
+            for task, tgt in (("leading", returns_wide), ("nowcast", ip_wide)):
+                if sector not in tgt.columns:
+                    continue
+                y = tgt[sector].shift(-lag) if task == "leading" else tgt[sector]
+                df = pd.DataFrame({"x": ntl_s, "y": y}).loc[w0:w1].dropna()
+                if len(df) < 8 or df["x"].nunique() <= 1 or df["y"].nunique() <= 1:
+                    continue  # too few obs or a constant series -> correlation undefined
+                sp = spearmanr(df["x"], df["y"]).statistic
+                pe = pearsonr(df["x"], df["y"]).statistic
+                if np.isnan(best["spearman"]) or abs(sp) > abs(best["spearman"]):
+                    best = {
+                        "pearson": float(pe),
+                        "spearman": float(sp),
+                        "n_obs": int(len(df)),
+                        "task_screened": task,
+                    }
+            kept = forced or (not np.isnan(best["spearman"]) and abs(best["spearman"]) >= rho_min)
+            drop_reason = "" if kept else ("low_|spearman|" if best["n_obs"] else "no_screen_obs")
+            rows.append(
+                {
+                    "region_id": rid,
+                    "sector": sector,
+                    **best,
+                    "kept": bool(kept),
+                    "forced_keep": bool(forced),
+                    "drop_reason": drop_reason,
+                }
+            )
+    out = pd.DataFrame(rows)
+    # No-look-ahead guarantee: warmup ends strictly before the first test month.
+    first_test = pd.Timestamp(MASTER_START) + pd.offsets.MonthEnd(
+        int(cfg.get("walk_forward", {}).get("min_train_months", 60))
+        + int(cfg.get("walk_forward", {}).get("val_months", 12))
+    )
+    if not (w1 < first_test):
+        raise AssertionError(
+            f"screen warmup end {w1.date()} not before first test {first_test.date()}"
+        )
+    return out
