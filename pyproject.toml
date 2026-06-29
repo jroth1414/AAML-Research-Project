@@ -31,7 +31,7 @@ extend-exclude = "src/ntl_etf/models/_vendor"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not integration and not network'"
 markers = [
     "integration: end-to-end test that needs network/credentials (excluded by default)",
     "network: test that touches the network (excluded by default in CI)",

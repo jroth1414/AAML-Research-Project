@@ -1,5 +1,272 @@
-# Populated in Phase A.1 (NTL); schema OWNED by docs/devplan/01-data-ntl.md (Task N4)
-# and the unified schema in DEVPLAN.md Appendix A.6. Phase B (panel) consumes — does not author.
-# This is a Phase-0 stub; N4 replaces it with the full region catalog.
+# configs/regions.yaml — region -> sector candidate catalog (OWNER: Phase A.1 / Task N4).
+# Unified schema per DEVPLAN.md Appendix A.6. Phase B (panel) and Phase D (eval strata) CONSUME
+# this file; they do not author it. Geometry (bbox) is owned here.
+#
+# ALL pairings are HYPOTHESES, validated/pruned by the Phase B correlation pre-screen (P3) with
+# strict no-look-ahead. Bounding boxes are approximate (decimal degrees, order [W, S, E, N] =
+# [min_lon, min_lat, max_lon, max_lat], EPSG:4326); refine to a shapefile under data/external/
+# only when a bbox is too coarse (e.g. the Permian Basin is a polygon, not a rectangle).
+#
+# Coverage invariant (asserted in tests): every SPDR ticker appears in >=1 region's
+# candidate_sectors; XLI/XLE/XLY/XLK/XLV have >=2 candidate regions (so H2 is not n=1, Risk R7).
 schema_version: 1
-regions: []
+
+regions:
+  # --- XLI industrials (multi-region: H2 anchor) ---
+  - id: pearl_river_delta
+    name: Pearl River Delta
+    bbox: [112.5, 22.0, 114.6, 23.7]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLI]
+    rationale: "Shenzhen-Guangzhou-Dongguan manufacturing cluster"
+    hypothesis: H2
+  - id: yangtze_river_delta
+    name: Yangtze River Delta
+    bbox: [119.8, 30.4, 122.2, 32.2]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLI]
+    rationale: "Shanghai-Suzhou-Ningbo industrial cluster"
+    hypothesis: H2
+  - id: la_long_beach_port
+    name: LA / Long Beach Port Complex
+    bbox: [-118.4, 33.6, -118.0, 33.9]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLI]
+    rationale: "Port-complex throughput (industrials/logistics)"
+    hypothesis: null
+
+  # --- XLE energy (single-dominant Permian: H3 anchor; plus refining/port regions) ---
+  - id: permian_basin
+    name: Permian Basin
+    bbox: [-104.5, 31.0, -100.8, 33.0]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLE]
+    rationale: "TX/NM oil basin, gas-flaring NTL (single-dominant-region case)"
+    hypothesis: H3
+  - id: us_gulf_coast_refining
+    name: US Gulf Coast Refining Corridor
+    bbox: [-95.6, 28.8, -91.0, 30.4]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLE]
+    rationale: "Houston-Port Arthur-Lake Charles refinery corridor"
+    hypothesis: null
+  - id: singapore_port
+    name: Singapore Port
+    bbox: [103.6, 1.2, 104.1, 1.5]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLE]
+    rationale: "Major bunkering/refining/shipping hub"
+    hypothesis: null
+  - id: rotterdam_port
+    name: Rotterdam Port
+    bbox: [3.9, 51.85, 4.6, 52.0]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLE]
+    rationale: "Europe's largest oil/petrochemical port"
+    hypothesis: null
+
+  # --- XLY consumer discretionary (multi-region metros) ---
+  - id: atlanta_metro
+    name: Atlanta Metro
+    bbox: [-84.7, 33.5, -84.0, 34.1]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLY]
+    rationale: "Metro retail/consumer activity"
+    hypothesis: null
+  - id: phoenix_metro
+    name: Phoenix Metro
+    bbox: [-112.4, 33.2, -111.6, 33.8]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLY]
+    rationale: "Sunbelt retail growth"
+    hypothesis: null
+  - id: dallas_ftworth_metro
+    name: Dallas-Fort Worth Metro
+    bbox: [-97.5, 32.5, -96.5, 33.2]
+    shapefile: null
+    anchor: true
+    candidate_sectors: [XLY]
+    rationale: "Metro retail/consumer"
+    hypothesis: null
+
+  # --- XLB materials ---
+  - id: ruhr_rhine_industrial
+    name: Ruhr / Rhine Industrial
+    bbox: [6.4, 50.8, 7.7, 51.6]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLB]
+    rationale: "Ruhr chemicals/materials (BASF region nearby)"
+    hypothesis: null
+  - id: antofagasta_copper
+    name: Antofagasta Copper Belt
+    bbox: [-70.6, -24.3, -68.5, -22.5]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLB]
+    rationale: "Chilean copper mining belt (materials)"
+    hypothesis: null
+
+  # --- XLF financials ---
+  - id: wall_street_midtown_nyc
+    name: Wall Street / Midtown NYC
+    bbox: [-74.05, 40.6, -73.85, 40.85]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLF]
+    rationale: "Financial-district activity proxy"
+    hypothesis: null
+  - id: city_of_london
+    name: City of London
+    bbox: [-0.20, 51.45, 0.05, 51.58]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLF]
+    rationale: "London financial core"
+    hypothesis: null
+
+  # --- XLK technology (multi-region tech corridors) ---
+  - id: silicon_valley
+    name: Silicon Valley
+    bbox: [-122.2, 37.2, -121.7, 37.55]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLK]
+    rationale: "Bay Area tech corridor"
+    hypothesis: null
+  - id: seattle_redmond_tech
+    name: Seattle / Redmond Tech
+    bbox: [-122.4, 47.4, -122.0, 47.8]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLK]
+    rationale: "Seattle/Redmond tech"
+    hypothesis: null
+  - id: shenzhen_tech_hub
+    name: Shenzhen Tech Hub
+    bbox: [113.8, 22.5, 114.3, 22.8]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLK]
+    rationale: "Hardware/electronics manufacturing-tech"
+    hypothesis: null
+
+  # --- XLU utilities ---
+  - id: three_gorges_yangtze_hydro
+    name: Three Gorges / Yangtze Hydro
+    bbox: [110.5, 30.6, 111.5, 31.2]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLU]
+    rationale: "Major hydro generation region"
+    hypothesis: null
+  - id: ercot_houston_load
+    name: ERCOT / Houston Load
+    bbox: [-95.8, 29.5, -95.0, 30.1]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLU]
+    rationale: "Electric-load/utility demand metro"
+    hypothesis: null
+
+  # --- XLV health care (multi-region medical/pharma clusters) ---
+  - id: houston_med_center
+    name: Texas Medical Center (Houston)
+    bbox: [-95.42, 29.68, -95.37, 29.73]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLV]
+    rationale: "Texas Medical Center (healthcare hub)"
+    hypothesis: null
+  - id: boston_longwood_med
+    name: Longwood Medical (Boston)
+    bbox: [-71.13, 42.31, -71.08, 42.36]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLV]
+    rationale: "Longwood medical/pharma cluster"
+    hypothesis: null
+  - id: nj_pharma_corridor
+    name: New Jersey Pharma Corridor
+    bbox: [-74.7, 40.3, -74.2, 40.7]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLV]
+    rationale: "NJ pharmaceutical manufacturing belt"
+    hypothesis: null
+
+  # --- XLP consumer staples ---
+  - id: amazon_midwest_fulfillment
+    name: Midwest Fulfillment Cluster
+    bbox: [-90.4, 38.5, -89.9, 38.9]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLP]
+    rationale: "Consumer-staples distribution/logistics (proxy)"
+    hypothesis: null
+  - id: central_valley_agri
+    name: California Central Valley Agriculture
+    bbox: [-121.0, 36.3, -119.2, 37.6]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLP]
+    rationale: "CA Central Valley food production (staples)"
+    hypothesis: null
+
+  # --- XLC communication services (data-center density) ---
+  - id: dallas_data_center_alley
+    name: DFW Data-Center Cluster
+    bbox: [-97.05, 32.9, -96.7, 33.2]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLC]
+    rationale: "Comms/data-center density (DFW)"
+    hypothesis: null
+  - id: northern_virginia_data_centers
+    name: Northern Virginia Data Center Alley
+    bbox: [-77.55, 38.9, -77.3, 39.1]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLC]
+    rationale: "Ashburn Data Center Alley (XLC comms)"
+    hypothesis: null
+
+  # --- XLRE real estate ---
+  - id: sunbelt_housing_construction
+    name: Sunbelt Housing / Construction (Phoenix)
+    bbox: [-112.4, 33.2, -111.6, 33.8]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLRE]
+    rationale: "Phoenix real-estate/construction expansion"
+    hypothesis: null
+  - id: atlanta_cre
+    name: Atlanta Commercial Real Estate
+    bbox: [-84.55, 33.7, -84.3, 33.95]
+    shapefile: null
+    anchor: false
+    candidate_sectors: [XLRE]
+    rationale: "Atlanta commercial real-estate core"
+    hypothesis: null
+
+# Primary NTL feature channels fed to models (Risk R25: pick a primary set; the remaining
+# features in ntl_features.parquet are QA/diagnostic only, not pooled as separate model series).
+features:
+  - ntl_sum
+  - ntl_mean
+  - ntl_lit_frac
+
+# Named hypothesis pairs consumed by Phase D for H2/H3 stratification (the canonical, force-kept
+# multi- vs single-region classification, independent of pre-screen noise).
+hypothesis_pairs:
+  H2_multiregion: { sector: XLI, regions: [pearl_river_delta, yangtze_river_delta] }
+  H3_singleregion: { sector: XLE, regions: [permian_basin] }

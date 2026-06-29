@@ -1,0 +1,32 @@
+# configs/ntl.yaml — NTL (VNP46A3) extraction config (Phase A.1). Behavior is config-driven.
+download_backend: earthaccess   # earthaccess (default on Windows/CPU) | blackmarblepy (optional)
+product: VNP46A3
+version: "2"                     # VIIRS Black Marble Collection 2.0
+study_start: "2013-01"
+study_end: "2024-12"
+
+raw_dir: data/raw/ntl
+interim_dir: data/interim/ntl
+cache_interim: true             # write clipped GeoTIFFs under interim_dir/<region>/<YYYY-MM>.tif
+
+# Quality masking (Task N3). VERIFIED on a real VNP46A3 v2 tile: the monthly Snow_Free composite
+# is dominated by quality classes 1 and 2 (class 0 is rare) and uses 255 for no-retrieval; the
+# composite already gap-fills and marks no-data with _FillValue=-999.9. So keep {0,1,2} and drop
+# only 255 (dropping {1,2} would discard nearly all pixels).
+good_quality_flags: [0, 1, 2]   # all retrieved classes valid for the monthly composite
+drop_quality_flags: [255]       # no-retrieval only
+fill_values: [-999.9]           # VNP46A3 v2 composite fill (read from band attrs at runtime too)
+clip_negative: mask             # mask | zero — handling of rare negative-radiance artifacts
+
+# Feature computation (Task N6).
+lit_threshold: 0.5              # nW/cm^2/sr; pixels above this count as "lit"
+
+# Release-lag leakage stamp (Task N7).
+release_lag_days: 45            # data_release_date = month_end(M) + lag_days (lands in M+1)
+
+# Coverage QA (Risk R27): region-months with too few valid pixels are flagged for Phase B.
+min_valid_fraction: 0.5         # warn/flag when frac_masked > (1 - this); Phase B decides drops
+
+# Network retry (Task N8).
+retry_max_attempts: 5
+retry_backoff_seconds: [2, 4, 8, 16, 32]
