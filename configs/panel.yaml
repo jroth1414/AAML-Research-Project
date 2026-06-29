@@ -1,0 +1,38 @@
+# configs/panel.yaml — panel build + walk-forward split config (Phase B / Task P10).
+seed: 1414
+study_start: "2013-01"
+study_end: "2024-12"
+
+# Region->sector correlation pre-screen (P3): runs ONLY on this warmup window, which ends strictly
+# before the first fold's test period (no look-ahead). H2/H3 hypothesis pairs are force-kept.
+screen_warmup: ["2013-01", "2017-12"]
+screen_rho_min: 0.15
+
+# Release-lag (P5 / Appendix): NTL month t predicts ETF return month t+1. TO-VERIFY in lag_decision.md.
+release_lag_months: 1
+
+# NTL model-facing feature (Risk R25): one PRIMARY area-normalized feature for the shared-weight
+# global pool (ntl_sum scales with bbox area -> not comparable across regions; ntl_mean is).
+ntl_feature_primary: ntl_mean
+ntl_features_qa: [ntl_sum, ntl_lit_frac, ntl_p90]   # diagnostics only; not pooled as model series
+
+# Nowcast target form: month-over-month log change of IP (causal value_dlog from Phase F).
+nowcast_target_col: value_dlog
+
+# Windowing.
+lookbacks: [6, 12, 24]
+horizons: [1, 3]
+
+# Walk-forward CV (P6). step_months=12 for HP search; dense_step_months=1 for final evaluation.
+walk_forward:
+  min_train_months: 60
+  val_months: 12
+  test_months: 12
+  step_months: 12
+  expanding: true
+  dense_step_months: 1
+min_series_history: 24   # ragged series enter a fold only with >= this many train months
+
+# Soft anchor-count floors (Risk R18): warn < 500, fail only < 100 (no hard >1000 crash).
+anchor_warn_floor: 500
+anchor_fail_floor: 100
