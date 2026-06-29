@@ -1,0 +1,63 @@
+# === Secrets (NEVER commit) ===
+.env
+.env.*
+!.env.example
+.netrc
+_netrc
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# === Data (keep folder skeleton via .gitkeep only) ===
+/data/**
+!/data/**/
+!/data/.gitkeep
+!/data/**/.gitkeep
+
+# === Experiment outputs (keep manifests + the canonical results store) ===
+/experiments/**
+!/experiments/**/
+!/experiments/results_store.parquet
+!/experiments/results_store.csv
+!/experiments/**/manifest.json
+
+# === Model checkpoints / large artifacts ===
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.hdf5
+
+# === Experiment tracking ===
+wandb/
+mlruns/
+
+# === LaTeX build artifacts ===
+paper/**/*.aux
+paper/**/*.bbl
+paper/**/*.blg
+paper/**/*.fdb_latexmk
+paper/**/*.fls
+paper/**/*.log
+paper/**/*.out
+paper/**/*.synctex.gz
+paper/**/*.toc
+
+# === OS / editor ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
