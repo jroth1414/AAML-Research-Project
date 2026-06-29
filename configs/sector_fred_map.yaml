@@ -1,5 +1,92 @@
-# Populated in Phase A.2 (finance/macro); schema OWNED by docs/devplan/02-data-financial-macro.md
-# (Task F6). Phase B consumes — does not author. This is a Phase-0 stub; F6 fills the full
-# 11-ticker mapping (8 nowcast-eligible + INDPRO control; XLF/XLC/XLRE ineligible).
+# configs/sector_fred_map.yaml — sector -> FRED IP/activity mapping (OWNER: Phase A.2 / Task F6).
+# Phase B consumes; it does not author. Nowcast (H5) is evaluated only on nowcast_eligible sectors
+# plus the INDPRO overall control. XLF/XLC/XLRE have no clean industrial-production analog and are
+# excluded from the nowcast task (they remain in the leading-return task H1-H4). Series IDs are
+# verified live by scripts/download_macro.py; on a 404 the fallback_chain is used and logged.
 schema_version: 1
-sectors: {}
+control:
+  ticker: INDPRO
+  sector: overall
+  fred_series_id: INDPRO
+  tier: clean
+  caveat: "Total Industrial Production index; baseline/control nowcast target for all sectors."
+sectors:
+  - ticker: XLI
+    sector: industrials
+    fred_series_id: IPMAN
+    fallback_chain: [IPMAN]
+    nowcast_eligible: true
+    tier: clean
+    caveat: "Manufacturing IP is a strong coincident analog for industrials."
+  - ticker: XLB
+    sector: materials
+    fred_series_id: IPDMAT
+    secondary_series: IPNMAT
+    fallback_chain: [IPDMAT, IPMAT, IPMINE]
+    nowcast_eligible: true
+    tier: good
+    caveat: "Durable goods materials IP; nondurable materials as a second channel."
+  - ticker: XLE
+    sector: energy
+    fred_series_id: IPG211S
+    secondary_series: IPMINE
+    fallback_chain: [IPG211S, IPMINE, IPB50089S]
+    nowcast_eligible: true
+    tier: good
+    caveat: "Oil & gas extraction IP; broad mining as fallback."
+  - ticker: XLU
+    sector: utilities
+    fred_series_id: IPUTIL
+    fallback_chain: [IPUTIL]
+    nowcast_eligible: true
+    tier: clean
+    caveat: "Electric & gas utilities IP; clean coincident analog."
+  - ticker: XLV
+    sector: health
+    fred_series_id: IPG3254S
+    fallback_chain: [IPG3254S, IPG325S]
+    nowcast_eligible: true
+    tier: partial
+    caveat: "Pharma & medicine mfg IP; misses health services/insurers (pharma-only proxy)."
+  - ticker: XLP
+    sector: staples
+    fred_series_id: IPNCONGD
+    fallback_chain: [IPNCONGD, IPNMAN, IPB54200S]
+    nowcast_eligible: true
+    tier: partial
+    caveat: "Nondurable consumer goods IP; proxy for consumer staples."
+  - ticker: XLY
+    sector: consumer_disc
+    fred_series_id: IPDCONGD
+    fallback_chain: [IPDCONGD, RSXFS]
+    nowcast_eligible: true
+    tier: partial
+    caveat: "Durable consumer goods IP; retail sales (RSXFS) as an activity-proxy fallback."
+  - ticker: XLK
+    sector: technology
+    fred_series_id: IPG334S
+    fallback_chain: [IPG334S, IPHITEK2]
+    nowcast_eligible: true
+    tier: partial
+    caveat: "Computer/electronic product mfg IP; hardware-only, misses software."
+  - ticker: XLF
+    sector: financials
+    fred_series_id: null
+    fallback_chain: []
+    nowcast_eligible: false
+    tier: ineligible
+    caveat: "No industrial-production analog; excluded from the H5 nowcast task."
+  - ticker: XLC
+    sector: communication
+    fred_series_id: null
+    fallback_chain: []
+    nowcast_eligible: false
+    tier: ineligible
+    caveat: "No clean IP analog; excluded from the H5 nowcast task."
+  - ticker: XLRE
+    sector: real_estate
+    fred_series_id: null
+    fallback_chain: []
+    nowcast_eligible: false
+    tier: ineligible
+    caveat: "No IP analog (HOUST is a weak proxy); excluded from the H5 nowcast task."

@@ -1,0 +1,15 @@
+# configs/data.yaml — finance/macro acquisition config (Phase A.2 / Task F1).
+study:
+  start: "2013-01-01"      # study window start (panel; series may begin later)
+  end: "2024-12-31"        # study window end
+  freq: "ME"               # pandas month-end alias
+tickers: [XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLRE, XLU, XLV, XLY]
+vix:
+  fred_series_id: "VIXCLS"     # daily CBOE VIX on FRED
+  yf_symbol: "^VIX"            # fallback source via yfinance
+  disruption_threshold: 25.0   # monthly mean VIX > 25 => disruption month (H4)
+momentum:
+  lookback_months: 12      # 12-month time-series momentum signal
+transforms:
+  stl_period: 12           # monthly seasonality
+  stl_robust: true
