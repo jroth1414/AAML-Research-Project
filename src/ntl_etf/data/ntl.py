@@ -303,18 +303,25 @@ def mosaic_tiles(tiles: list[tuple[np.ndarray, object]], nodata=np.nan):
 # --------------------------------------------------------------------------------------
 # N2 / N5 (IO) — real download + georeference (earthaccess backend)
 # --------------------------------------------------------------------------------------
+_LOGGED_IN = False
+
+
 def _earthaccess_login() -> None:
-    """Authenticate earthaccess using the bearer token (lazy import)."""
+    """Authenticate earthaccess using the bearer token once per process (lazy import)."""
+    global _LOGGED_IN
+    if _LOGGED_IN:
+        return
     import earthaccess
 
     token = resolve_earthdata_token()
     # earthaccess reads EARTHDATA_TOKEN for the "environment" strategy in recent versions.
-    os.environ.setdefault("EARTHDATA_TOKEN", token)
+    os.environ["EARTHDATA_TOKEN"] = token
     try:
         earthaccess.login(strategy="environment")
     except Exception:
         # fall back to a netrc strategy if username/password are present
         earthaccess.login(strategy="netrc")
+    _LOGGED_IN = True
 
 
 def _read_subdataset(hdf_path: str, layer: str) -> tuple[np.ndarray, dict]:
