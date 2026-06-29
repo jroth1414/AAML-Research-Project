@@ -1,0 +1,21 @@
+# requirements-ntl.txt  (OPTIONAL alternate NTL backend)
+#
+# blackmarblepy is the World-Bank BlackMarblePy convenience wrapper for VNP46A3. It is the
+# *alternate* download backend (configs/ntl.yaml: download_backend), not required: the core
+# environment uses `earthaccess` (in requirements.txt) which gives the same backend-agnostic
+# downstream interface (see docs/devplan/01-data-ntl.md, Task N2).
+#
+# WHY OPTIONAL ON THIS MACHINE: blackmarblepy depends on ipywidgets, whose jupyterlab
+# labextension static files have very long names. Combined with this repo's deep install
+# path (...\AAML-Research-Project\.venv\share\jupyter\labextensions\...), they exceed the
+# Windows 260-char MAX_PATH limit, so `pip install blackmarblepy` fails with an OSError when
+# Windows long-path support is disabled (the default) and the user is not an administrator.
+#
+# TO INSTALL blackmarblepy on Windows, do ONE of:
+#   1. Enable long paths (admin):  Set HKLM\SYSTEM\CurrentControlSet\Control\FileSystem
+#      LongPathsEnabled=1, reboot, then `pip install -r requirements-ntl.txt`.
+#   2. Use a short venv path (e.g. C:\venvs\ntl) so the labextension paths fit.
+#   3. Install on the GPU/WSL2/Linux profile, where MAX_PATH does not apply.
+# On Linux/WSL2/Colab this file installs cleanly with no special steps.
+
+blackmarblepy>=2024.6

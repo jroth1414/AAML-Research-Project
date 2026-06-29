@@ -1,0 +1,15 @@
+# requirements-extras.txt  (GPU / Linux / WSL2 / Colab ONLY — see docs/devplan/00-overview-and-setup.md S4)
+#
+# NOTE: Install ONLY in a CUDA Linux/WSL2/Colab environment (Execution Profile 2 or 3).
+# On native Windows/CPU these will fail to build (mamba-ssm / causal-conv1d need nvcc + a
+# Linux build toolchain; triton is Linux/CUDA only). The CPU profile NEVER installs this file;
+# Mamba runs via the pure-PyTorch S6 fallback and foundation models run zero-shot on CPU.
+
+mamba-ssm>=2.2          # selective state-space (S6) fused kernel; CUDA + Linux only
+causal-conv1d>=1.4      # dependency of mamba-ssm; CUDA kernels
+triton>=2.3             # mamba-ssm runtime dep; Linux/CUDA only
+
+chronos-forecasting>=1.4
+uni2ts>=1.2             # Moirai
+timesfm[torch]>=1.2
+einops>=0.8
