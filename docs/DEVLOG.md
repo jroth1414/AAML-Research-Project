@@ -101,10 +101,13 @@ real 2-tile Yangtze region:
   canonical Phase-B alignment constant is `RELEASE_LAG_MONTHS = 1` (target = M+1, Appendix). The
   stamp is a diagnostic; Phase B's `lag_decision.md` reconciles whether the real VNP46A3 latency
   (historically ~2–4 weeks) supports lag 1 or requires 2.
-- **Scale reality (flag for the user):** tiles are ~28 MB; the full 28-region × 144-month pull is
-  ~20–25 distinct tiles × 144 ≈ **80–150 GB over several hours**. Disk is fine (293 GB free). The
-  download is idempotent/resumable via `data/interim/ntl/manifest.json` and is running in the
-  background; it will not finish in one session.
+- **Scale reality:** tiles are ~28 MB. The full 28-region × 144-month pull **completed** in the
+  background (~3.75 h): `data/processed/ntl_features.parquet` has **4032 rows** (28×144), release-lag
+  holds on every row, `frac_masked` mean 0.3% (only 4 region-months > 0.5, Risk R27 candidates),
+  0 NaN. 4 region-months failed on a first pass (network) and succeeded on the resumable re-run
+  (manifest-driven). **Disk footprint:** the raw HDF5 cache under `data/raw/ntl/` is **~178 GB**
+  (2448 tiles), leaving ~112 GB free. The cache is gitignored and only needed for re-extraction;
+  it can be purged to reclaim disk (re-download is ~3.75 h). Left in place pending the user's call.
 
 ### A.2 — Finance/Macro (real data downloaded & validated)
 - **ETF (yfinance):** 11 tickers, month-end tz-naive log returns + 12m momentum. Ragged
