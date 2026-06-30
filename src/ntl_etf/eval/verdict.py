@@ -98,15 +98,21 @@ def decide_hypotheses(results, dm, prereg) -> dict:
         else {"verdict": "support" if now > 0 else "reject", "nowcast_r2": now}
     )
 
-    # --- H6a/H6b: transfer (deferred without pretrained / foundation runs) ---
-    pre = _pooled(results, "patchtst", "mse", "pretrained")
-    out["H6a"] = (
-        {"verdict": "deferred", "reason": "no NTL-masked-pretrained variant run (Tier 2)."}
-        if pre is None
-        else {
-            "verdict": "support" if pre < (_pooled(results, "patchtst", "mse") or 9e9) else "reject"
+    # --- H6a: NTL-masked-pretrained vs from-scratch PatchTST (Family D, identical params) ---
+    dm_h6a = _dm(dm, "D_transfer", "patchtst_pretrained", "patchtst")
+    if dm_h6a is None or dm_h6a.get("n", 0) < 3:
+        out["H6a"] = {
+            "verdict": "deferred",
+            "reason": "no NTL-masked-pretrained variant run (Tier 2).",
         }
-    )
+    else:
+        out["H6a"] = {
+            "verdict": "support" if dm_h6a["win"] == "patchtst_pretrained" else "reject",
+            "win": dm_h6a["win"],
+            "p_holm": dm_h6a["p_holm"],
+            "n": dm_h6a["n"],
+            "note": "NTL-masked-pretrained vs from-scratch PatchTST (identical architecture/params).",
+        }
     dm_h6b = _dm(dm, "E_foundation", "chronos", "momentum")
     if dm_h6b is None or dm_h6b.get("n", 0) < 3:
         out["H6b"] = {
