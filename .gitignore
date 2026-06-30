@@ -1,0 +1,75 @@
+# === Secrets (NEVER commit) ===
+.env
+.env.*
+!.env.example
+.netrc
+_netrc
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# === Data (keep folder skeleton via .gitkeep only) ===
+/data/**
+!/data/**/
+!/data/.gitkeep
+!/data/**/.gitkeep
+
+# === Experiment outputs (keep manifests + the canonical results store + prereg freeze) ===
+/experiments/**
+!/experiments/**/
+!/experiments/results_store.parquet
+!/experiments/results_store.csv
+!/experiments/**/manifest.json
+!/experiments/PREREG.md
+!/experiments/manifests/**
+!/experiments/.gitkeep
+
+# === Model checkpoints / large artifacts / rasters ===
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.hdf5
+*.safetensors
+*.tif
+*.tiff
+
+# === Scratch / check artifacts (never commit) ===
+scratch_*.txt
+
+# === Experiment tracking ===
+wandb/
+mlruns/
+
+# === LaTeX build artifacts (global; PDFs are kept) ===
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.toc
+paper/**/*.log
+paper/**/*.out
+proposal/*.log
+proposal/*.out
+paper/build/
+
+# === OS / editor ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

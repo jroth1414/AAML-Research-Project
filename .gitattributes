@@ -1,0 +1,19 @@
+# Normalize line endings so cross-platform reproduction (Windows + WSL2/Colab) is stable.
+* text=auto eol=lf
+
+# Shell + Python must stay LF so bash on Linux/WSL2 does not choke on CRLF.
+*.sh text eol=lf
+*.py text eol=lf
+
+# PowerShell scripts are Windows-first.
+*.ps1 text eol=crlf
+
+# Binary/data artifacts: never normalize.
+*.parquet binary
+*.tif binary
+*.tiff binary
+*.png binary
+*.pdf binary
+*.pt binary
+*.pth binary
+*.safetensors binary

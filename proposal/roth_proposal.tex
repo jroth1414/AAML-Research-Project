@@ -1,0 +1,355 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.5em}
+\newcommand{\hdr}[1]{\medskip\noindent\textbf{#1}\par\nopagebreak}
+\setlist{nosep,leftmargin=1.5em,topsep=2pt}
+\frenchspacing
+
+\title{\vspace{-1.2cm}\bfseries Terrain-Aware Semantic Segmentation for Autonomous Mars
+Rover Driving: CNNs vs.\ Transformers vs.\ Foundation Models}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.3cm}
+\noindent\textbf{Course:} EN.705.742 --- Advanced Applied Machine Learning, Summer 2026
+\quad\textbf{Author:} John Roth \quad\textbf{Submission:} Module 2 Research Topic
+\par\smallskip\noindent\rule{0.45\textwidth}{0.4pt}
+
+\section{Introduction and Goals}
+
+\hdr{Research Topic}
+This project investigates which family of modern semantic-segmentation
+models---convolutional, transformer, or foundation---best classifies Martian terrain from rover
+camera imagery, the core perception primitive for \emph{autonomous drivability} assessment. A
+planetary rover that can label each pixel of the scene ahead as \emph{soil}, \emph{bedrock},
+\emph{sand}, or \emph{big rock} can plan longer, safer autonomous drives without waiting for a
+round-trip command from Earth. The stakes are concrete: Curiosity sustained significant wheel damage
+driving over sharp embedded bedrock, and onboard terrain classification (NASA JPL's SPOC system
+[14]) was developed precisely to mitigate such hazards. The NASA \textbf{AI4Mars} dataset [1,18]
+---\,$\sim$326K crowdsourced segmentation labels over $\sim$35K images from the Curiosity,
+Perseverance, Opportunity, and Spirit rovers\,---\,makes a rigorous, data-driven study of this
+problem possible for the first time.
+
+\hdr{A central architectural question motivates the comparison}
+A Martian scene has structure at two scales: fine local texture and boundaries (the silhouette of a
+small rock, the lip of an outcrop) and large homogeneous regions (broad soil flats, dune fields).
+Convolutional encoder--decoders (U-Net [2], DeepLabV3+ [3]) bake in strong local inductive bias and
+multi-scale context through pooling and atrous convolution; the SegFormer transformer [4] models
+\emph{global} context directly through self-attention over the whole image; and vision foundation
+models (SAM [5], DINOv3 [6]) bring web- and \emph{satellite}-scale pretrained priors. These three
+inductive biases over the \emph{same} pixel-labeling task make AI4Mars a well-motivated testbed for
+the question of which prior best captures the structure of planetary terrain.
+
+\hdr{Design for a robust, fair comparison}
+Terrain class is \emph{directly observable in the pixels}, so a meaningful positive result is
+expected; the scientific value lies in \emph{which} model wins and \emph{why}. Five deliberate design
+choices make the comparison fair and the conclusions defensible:
+\begin{enumerate}
+  \item \textbf{Controlled architecture comparison.} Models share one training recipe (optimizer,
+  schedule, augmentation, crop size, loss), so the architecture is the only variable.
+  \item \textbf{Transfer as a controlled lever.} Each CNN is run with an ImageNet-pretrained encoder
+  \emph{and} from an identical random initialization, isolating the value of transfer (H2).
+  \item \textbf{Honest evaluation.} Models are selected on a validation split and reported on the
+  official \emph{expert-labeled} AI4Mars test set; a separate \emph{cross-rover} test (train on
+  Curiosity, test on Opportunity/Spirit) measures real generalization (H4).
+  \item \textbf{Imbalance-aware metrics.} Soil dominates the pixel distribution, so a class-weighted
+  loss is used and \emph{per-class} IoU is reported, not just the mean.
+  \item \textbf{Pre-registered significance.} Model differences are claimed only when significant
+  under a paired bootstrap (and McNemar's test) with Holm correction.
+\end{enumerate}
+
+\hdr{Pipeline Overview}
+\begin{verbatim}
+NASA AI4Mars (Curiosity/Perseverance/Opportunity/Spirit)
+    grayscale Navcam images  +  crowdsourced labels (0-3; 255 = ignore)
+        |
+SegDataset: ignore-mask handling, by-image splits, class-weighted loss
+        |
+   +----+--------------------+--------------------+-----------------+
+   v                         v                    v                 v
+Baseline U-Net      U-Net / DeepLabV3+        SegFormer        Foundation
+(from scratch)      (ImageNet vs scratch)    (MiT encoder)    (SAM / DINOv2)
+   |                         |                    |                 |
+   +----------> CE + Dice loss (ignore_index), AdamW, AMP on GPU <--+
+        |
+Evaluate: mIoU / per-class IoU / pixel-acc / boundary-F1
+        |
+Paired bootstrap + McNemar (Holm)  ->  per-class & cross-rover stratified analysis
+\end{verbatim}
+
+\hdr{Project Goals}
+\begin{itemize}
+  \item Build a reproducible, leakage-safe AI4Mars segmentation pipeline (by-image splits;
+  ignore-mask exclusion from loss and metrics).
+  \item Compare CNN (U-Net, DeepLabV3+) vs.\ transformer (SegFormer) vs.\ foundation (SAM/DINOv2)
+  architectures under one training recipe.
+  \item Quantify the value of ImageNet transfer learning vs.\ from-scratch training.
+  \item Test cross-rover generalization (Curiosity $\rightarrow$ Opportunity/Spirit) and whether
+  transfer/augmentation narrows the domain gap.
+  \item Determine which inductive bias---local convolution, global attention, or foundation
+  prior---best captures Martian terrain, and report drivability-relevant per-class accuracy.
+\end{itemize}
+
+\hdr{ML Problem Statement}
+This is a \textbf{dense multi-class semantic segmentation} problem. Given a grayscale rover image
+$\mathbf{x}\in\mathbb{R}^{H\times W}$ (replicated to three channels for pretrained encoders), a model
+$f_\theta:\mathbb{R}^{H\times W\times 3}\!\to\!\mathbb{R}^{H\times W\times C}$ produces per-pixel
+class logits over $C=4$ terrain classes, yielding a label map
+$\hat{\mathbf{y}}\in\{0,\dots,3\}^{H\times W}$. Training minimizes a class-weighted cross-entropy plus
+Dice loss computed \emph{only over valid pixels} (the ignore label $255$---unlabeled, rover-self, and
+$>$30\,m range---is excluded). The headline metric is mean Intersection-over-Union (mIoU). The
+applied ML methods are U-Net, DeepLabV3+, and SegFormer, with ImageNet/foundation transfer learning,
+compared against a from-scratch baseline.
+
+\section{Problem, Candidate Solution, and Research Hypotheses}
+
+\hdr{Problem Statement}
+Autonomous driving is the bottleneck on planetary-rover science return: every meter driven under
+ground-in-the-loop control costs hours of communication latency. Reliable onboard terrain
+segmentation enables longer autonomous traverses and hazard avoidance. AI4Mars [1] supplies the
+labeled imagery to learn this, and prior work has reported strong single-model results
+(SPOC [14]; MarsSeg [13]). What is \emph{not} established is a controlled, significance-tested
+comparison across the modern architecture families, paired with an honest measurement of how a model
+trained on one rover generalizes to another camera and terrain distribution.
+
+\smallskip\noindent The gap this project fills is: \textbf{which inductive bias---local convolution,
+global self-attention, or a pretrained foundation prior---best segments Martian terrain; how much
+does transfer learning help; and does a model trained on Curiosity generalize to the Opportunity and
+Spirit rovers?}
+
+\hdr{Null Hypothesis (H0)}
+No deep segmentation model significantly outperforms a simple from-scratch baseline on mean IoU,
+implying that architecture and transfer choices do not matter for this task.
+
+\hdr{Candidate Solution}
+\begin{enumerate}
+  \item Download and verify the open AI4Mars merged release; build a \texttt{SegDataset} that pairs
+  each image with its label map, excludes the ignore region, and splits \emph{by image}.
+  \item Train a from-scratch baseline U-Net to establish the H0/H1 yardstick.
+  \item Train U-Net and DeepLabV3+ with ResNet/EfficientNet encoders, each \emph{with} ImageNet
+  pretraining and \emph{without} (from scratch), under one recipe (class-weighted CE\,+\,Dice, AdamW,
+  cosine schedule, early stopping on val mIoU).
+  \item Train SegFormer (hierarchical MiT encoder) as the transformer arm.
+  \item Evaluate a foundation reference: SAM zero-shot mask proposals mapped to terrain classes,
+  and/or a DINOv2 backbone with a trained segmentation head.
+  \item Evaluate on the expert test set and the cross-rover (MER) set; compare all models with a
+  pre-registered paired bootstrap / McNemar test under Holm correction.
+\end{enumerate}
+
+\hdr{Research Hypotheses}
+\begin{itemize}
+  \item \textbf{H1 (Signal Existence):} At least one deep model (U-Net, DeepLabV3+, or SegFormer)
+  significantly outperforms the from-scratch baseline on mIoU (paired-bootstrap significant),
+  confirming that learned multi-scale representations matter for Mars terrain.
+  \item \textbf{H2 (Transfer Learning):} A model with an ImageNet-pretrained encoder significantly
+  outperforms its \emph{identically configured} from-scratch counterpart, showing that natural-image
+  priors transfer to grayscale planetary imagery despite the large domain gap.
+  \item \textbf{H3 (Architecture / Inductive Bias):} SegFormer's global attention yields higher IoU
+  on large homogeneous classes (soil, sand), while CNN decoders yield higher IoU on the small,
+  boundary-dominated \emph{big rock} class---i.e.\ the winner depends on the class, tested via
+  per-class IoU strata.
+  \item \textbf{H4 (Cross-Rover Robustness):} A model trained on Curiosity generalizes to the
+  Opportunity/Spirit (MER) imagery with a bounded mIoU drop, and ImageNet pretraining plus
+  augmentation measurably narrow the cross-rover gap relative to from-scratch training.
+  \item \textbf{H5 (Foundation-Model Reference):} A vision foundation model---SAM used zero-shot, or a
+  \textbf{DINOv3 backbone pretrained on Earth \emph{satellite} imagery} (SAT-493M) with a light
+  trained head---matches or exceeds the from-scratch baseline. This tests a striking cross-planet,
+  cross-viewpoint transfer question: do self-supervised features learned from Earth orbital RGB
+  generalize to Mars ground-level grayscale terrain?
+\end{itemize}
+
+\section{Applied Machine Learning Method and Dataset}
+
+\hdr{Dataset}
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Source & Description & Access \\
+\midrule
+NASA AI4Mars [1,18] & $\sim$326K crowdsourced segmentation labels over & Free, open \\
+(merged-0.6) & $\sim$35K rover images; 4 terrain classes (0--3); & (Zenodo) \\
+ & 255 = NULL/ignore (unlabeled, rover, $>$30\,m) & \\
+AI4Mars MSL & Curiosity Navcam: $\sim$16{,}064 train + 322 expert & Free, open \\
+(Curiosity) & test images (\texttt{masked-gold-min$k$-100agree}) & \\
+AI4Mars MER & Opportunity / Spirit imagery for the & Free, open \\
+(cross-rover) & cross-rover generalization test (H4) & \\
+ImageNet-1k [11] & 1.28M natural images; CNN encoder pretraining (H2) & Public \\
+SAT-493M [6] & 493M Maxar RGB orthoimages (0.6\,m); DINOv3 & Public \\
+ & satellite backbone pretraining (H5) & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\hdr{Protocol and leakage controls}
+Splits are made \emph{by image} so no frame appears in two splits; the official expert test set is
+held out for final reporting. The ignore label (255) is excluded from both the loss and every metric.
+Because soil dominates the pixel distribution, the loss is inverse-frequency class-weighted and
+per-class IoU is always reported. Augmentation preserves the scene geometry: horizontal flip and mild
+photometric jitter only (no vertical flip, which would invert the horizon). Grayscale inputs are
+replicated to three channels and ImageNet-normalized so pretrained encoders see a compatible
+distribution. Every run records its seed, git SHA, configuration hash, and resolved package versions
+in a manifest for reproducibility.
+
+\hdr{ML Methods}
+
+\noindent\textbf{Baseline: from-scratch U-Net.} A small U-Net trained from random initialization on
+AI4Mars only---the H0/H1 yardstick that isolates the value of capacity and transfer.
+
+\smallskip\noindent\textbf{Model 1: U-Net (CNN encoder--decoder) [2].} A contracting encoder and
+expanding decoder joined by \emph{skip connections} that fuse high-resolution local detail with
+deep semantic context. With encoder feature map $\mathbf{e}_\ell$ and decoder map
+$\mathbf{d}_{\ell+1}$, each decoder stage computes
+\[
+\mathbf{d}_\ell = \mathrm{Conv}\big(\,[\,\mathrm{Up}(\mathbf{d}_{\ell+1})\,;\,\mathbf{e}_\ell\,]\,\big),
+\]
+the concatenation $[\cdot\,;\cdot]$ being the mechanism that recovers sharp boundaries. Run with
+\textbf{ResNet-34} and \textbf{EfficientNet-B0} encoders (\texttt{segmentation-models-pytorch}), each
+ImageNet-1k-pretrained vs.\ from scratch.
+
+\smallskip\noindent\textbf{Model 2: DeepLabV3+ [3].} Adds an Atrous Spatial Pyramid Pooling module
+that probes context at multiple dilation rates $r$ without losing resolution. For input $x$ and
+filter $w$, atrous convolution is
+\[
+y[i] = \sum_{k} x[i + r\,k]\,w[k],
+\]
+so larger $r$ enlarges the receptive field at constant cost---well suited to broad homogeneous Martian
+terrain. Run with a \textbf{ResNet-50} encoder, ImageNet-1k-pretrained vs.\ from scratch.
+
+\smallskip\noindent\textbf{Model 3: SegFormer (transformer) [4].} A hierarchical Mix-Transformer
+encoder (\textbf{MiT-B0} and \textbf{MiT-B2}, via \texttt{transformers}) with efficient self-attention
+and a lightweight all-MLP decoder. Self-attention models \emph{global} pixel context:
+\[
+\mathrm{Attention}(Q,K,V) = \mathrm{softmax}\!\Big(\tfrac{Q K^{\top}}{\sqrt{d}}\Big)V,
+\]
+with a sequence-reduction trick that makes attention tractable at image resolution. This is the
+primary test of whether global attention beats convolutional locality on planetary terrain.
+
+\smallskip\noindent\textbf{Foundation reference [5,6].} SAM [5] (\texttt{sam\_vit\_b}) is a promptable
+segmentation model pretrained on $>$1B masks; we evaluate its zero-shot mask proposals mapped to
+terrain classes. \textbf{DINOv3} [6] provides self-supervised ViT features [8]; we use the
+\textbf{ViT-L/16} variant pretrained on \textbf{SAT-493M}
+(\texttt{facebook/dinov3-vitl16-pretrain-sat493m}; 493M Maxar RGB orthoimages at 0.6\,m) as a
+\emph{frozen} backbone with a light trained decoder head---a domain-relevant prior (terrain and
+geologic texture seen from orbit) far closer to Mars than ImageNet natural images. Both probe how far
+large-scale visual priors transfer to Martian terrain (H5).
+
+\smallskip\noindent\textbf{Loss.} All trained models minimize a combined objective on valid pixels,
+\[
+\mathcal{L} = \mathcal{L}_{\mathrm{CE}}^{\,w}(\hat{y}, y) + \lambda\,\big(1 - \mathrm{Dice}(\hat{y}, y)\big),
+\qquad
+\mathrm{Dice} = \frac{2\sum p\,g}{\sum p + \sum g},
+\]
+where $\mathcal{L}_{\mathrm{CE}}^{\,w}$ is inverse-frequency-weighted cross-entropy (ignore index
+255), $p$ are predicted soft probabilities, $g$ the one-hot targets, and $\lambda$ balances the
+terms. Dice [9] directly targets the IoU-like overlap and counteracts class imbalance.
+
+\hdr{Architecture Comparison Summary}
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Model & Inductive bias & Context mechanism & Key hyperparameters \\
+\midrule
+U-Net [2] & Local convolution & Skip connections & ResNet-34 / EfficientNet-B0 \\
+DeepLabV3+ [3] & Local + multi-scale & Atrous pyramid (ASPP) & ResNet-50, dilation rates \\
+SegFormer [4] & Global attention & Efficient self-attention & MiT-B0 / MiT-B2, decoder dim \\
+SAM / DINOv3-SAT [5,6] & Foundation prior & Pretrained ViT [8] & ViT-L/16-sat493m; SAM ViT-B \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\hdr{Hyperparameter Search Plan}
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Hyperparameter & Search range & Method \\
+\midrule
+Encoder & ResNet-34, EfficientNet-B0, MiT-B0/B2 & Grid \\
+Pretraining & ImageNet, none (scratch) & Grid (H2) \\
+Learning rate & 1e-4, 3e-4, 6e-4 & Grid \\
+Crop / input size & 384, 512 & Grid \\
+Batch size & 8, 16 & Grid \\
+Dice weight $\lambda$ & 0.5, 1.0 & Grid \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent All selection is performed on a held-out validation split; the expert test set is scored
+only for the best validated configuration per model.
+
+\hdr{Performance Metrics}
+\begin{itemize}
+  \item \textbf{mean IoU} (primary) and \textbf{per-class IoU} for soil, bedrock, sand, big rock
+  (per-class drives H3 and is the drivability-relevant view).
+  \item \textbf{Pixel accuracy} and \textbf{boundary-F1} (boundary quality matters for hazard edges).
+  \item \textbf{Statistical significance:} a \emph{paired bootstrap} over test images and
+  \emph{McNemar's test} [15] on per-pixel correctness for pairwise model comparison, Holm-corrected
+  within each hypothesis family, so differences are reported as wins only when significant.
+  \item \textbf{Stratified analysis:} per-class IoU (tests H3); in-rover vs.\ cross-rover (tests H4);
+  ImageNet-pretrained vs.\ from-scratch (tests H2).
+\end{itemize}
+
+\hdr{Implementation Stack}
+\begin{itemize}
+  \item \texttt{PyTorch} / \texttt{torchvision} --- model implementation and training.
+  \item \texttt{segmentation-models-pytorch} --- U-Net / DeepLabV3+ with ImageNet-pretrained encoders.
+  \item \texttt{transformers} --- SegFormer (MiT) segmentation; \texttt{segment-anything}, \texttt{timm}
+  (DINOv2) --- foundation references.
+  \item \texttt{albumentations}, \texttt{opencv}, \texttt{scikit-image} --- image IO, augmentation,
+  boundary metrics.
+  \item \texttt{scikit-learn} / \texttt{scipy} --- bootstrap CIs, McNemar test, multiple-comparison
+  correction; \texttt{matplotlib} --- segmentation-overlay figures.
+\end{itemize}
+
+\section{References}
+\begin{enumerate}[leftmargin=2.2em,label={[\arabic*]}]
+  \item Swan, R.~M., Atha, D., Leopold, H.~A., et al. (2021). \emph{AI4MARS: A Dataset for
+  Terrain-Aware Autonomous Driving on Mars}. CVPR Workshops 2021.
+  \item Ronneberger, O., Fischer, P., \& Brox, T. (2015). \emph{U-Net: Convolutional Networks for
+  Biomedical Image Segmentation}. MICCAI 2015. arXiv:1505.04597.
+  \item Chen, L.-C., Zhu, Y., Papandreou, G., Schroff, F., \& Adam, H. (2018). \emph{Encoder-Decoder
+  with Atrous Separable Convolution for Semantic Image Segmentation (DeepLabV3+)}. ECCV 2018.
+  arXiv:1802.02611.
+  \item Xie, E., Wang, W., Yu, Z., Anandkumar, A., Alvarez, J.~M., \& Luo, P. (2021). \emph{SegFormer:
+  Simple and Efficient Design for Semantic Segmentation with Transformers}. NeurIPS 2021.
+  arXiv:2105.15203.
+  \item Kirillov, A., Mintun, E., Ravi, N., et al. (2023). \emph{Segment Anything}. ICCV 2023.
+  arXiv:2304.02643.
+  \item \emph{DINOv3: Self-supervised Learning for Vision at Scale} (2025). Meta AI Research.
+  arXiv:2508.10104. Satellite variant (ViT pretrained on SAT-493M Maxar imagery):
+  \url{https://huggingface.co/facebook/dinov3-vit7b16-pretrain-sat493m}; code:
+  \url{https://github.com/facebookresearch/dinov3}.
+  \item He, K., Zhang, X., Ren, S., \& Sun, J. (2016). \emph{Deep Residual Learning for Image
+  Recognition (ResNet)}. CVPR 2016. arXiv:1512.03385.
+  \item Dosovitskiy, A., et al. (2021). \emph{An Image is Worth 16$\times$16 Words: Transformers for
+  Image Recognition at Scale (ViT)}. ICLR 2021. arXiv:2010.11929.
+  \item Milletari, F., Navab, N., \& Ahmadi, S.-A. (2016). \emph{V-Net: Fully Convolutional Neural
+  Networks for Volumetric Medical Image Segmentation (Dice loss)}. 3DV 2016. arXiv:1606.04797.
+  \item Long, J., Shelhamer, E., \& Darrell, T. (2015). \emph{Fully Convolutional Networks for
+  Semantic Segmentation}. CVPR 2015. arXiv:1411.4038.
+  \item Deng, J., Dong, W., Socher, R., Li, L.-J., Li, K., \& Fei-Fei, L. (2009). \emph{ImageNet: A
+  Large-Scale Hierarchical Image Database}. CVPR 2009.
+  \item Loshchilov, I., \& Hutter, F. (2019). \emph{Decoupled Weight Decay Regularization (AdamW)}.
+  ICLR 2019. arXiv:1711.05101.
+  \item \emph{MarsSeg: Mars Surface Semantic Segmentation with Multi-level Extractor and Connector}
+  (2024). arXiv:2404.04155.
+  \item Rothrock, B., Kennedy, R., Cunningham, C., Papon, J., Heverly, M., \& Ono, M. (2016).
+  \emph{SPOC: Deep Learning-based Terrain Classification for Mars Rover Missions}. AIAA SPACE 2016.
+  \item Dietterich, T.~G. (1998). \emph{Approximate Statistical Tests for Comparing Supervised
+  Classification Learning Algorithms (McNemar)}. Neural Computation, 10(7), 1895--1923.
+  \item Efron, B., \& Tibshirani, R.~J. (1993). \emph{An Introduction to the Bootstrap}. Chapman \&
+  Hall.
+  \item Everingham, M., Van Gool, L., Williams, C.~K.~I., Winn, J., \& Zisserman, A. (2010).
+  \emph{The PASCAL Visual Object Classes (VOC) Challenge}. IJCV, 88(2), 303--338.
+  \item NASA. \emph{AI4MARS: A Dataset for Terrain-Aware Autonomous Driving on Mars} (merged-0.6).
+  Zenodo. \url{https://zenodo.org/records/15995036}.
+\end{enumerate}
+
+\end{document}
