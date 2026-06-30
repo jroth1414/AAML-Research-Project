@@ -29,6 +29,8 @@ torch>=2.2,<2.5
 torchvision>=0.17,<0.20
 segmentation-models-pytorch>=0.3.3   # U-Net / DeepLabV3+ + ImageNet-pretrained encoders (pulls timm)
 transformers>=4.40                   # SegFormer (MiT) segmentation
+lightning>=2.2,<2.6                  # training orchestration (loop, AMP, DDP, checkpoint, early-stop)
+torchmetrics>=1.3                    # mIoU / per-class IoU (MulticlassJaccardIndex, ignore_index)
 
 # --- tooling ---
 ruff>=0.5
