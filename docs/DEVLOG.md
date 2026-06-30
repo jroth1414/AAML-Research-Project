@@ -219,3 +219,49 @@ fine-tune (GPU only). The core models make **H1/H2/H3/H4 testable in Phase D**.
 **Verification.** `pytest -q` 90 passed (shapes/overfit/determinism + contract, no network);
 all six models produce contract-valid runs (or skip-and-log); ruff/black clean. **Git:** commits
 M1, M2/M3, M9, M4-M6, M7/M10, M13/M15-M17 on `phaseC-models`.
+
+---
+
+## Phase D — Evaluation, statistics, hypothesis verdicts (E1–E12) · 2026-06-29 · branch `phaseD-eval-stats`
+
+Built the full pre-registered evaluation: metrics, the Diebold-Mariano test, strata, the DM suite
+with multiple-comparison correction, and the honest H0-H6 verdict. The **real evaluation ran
+end-to-end** on the actual predictions. 108 offline tests green; ruff/black clean.
+
+**The headline result (honest, and the scientifically correct one):**
+- Loaded 2232 predictions (5 models); E2 alignment audit ALL PASS (no NaN, month-end targets,
+  `scaler_fit_on=train` in every manifest).
+- DM suite: 11 pre-registered comparisons; **only 1 Holm-significant** result — in the disruption
+  stratum, PatchTST beats Mamba(fallback) (p_holm=0.067, n=13).
+- **H1: reject. H2: reject. H3: reject. H4/H5/H6a/H6b: deferred. H0 HOLDS** — *no DL model
+  significantly beats the 12-month momentum baseline on pooled 1-month-return MSE after Holm
+  correction (with directional significance).* The point-estimate MSE edges from Phase C (PatchTST/
+  DLinear < momentum) are **not significant** once tested properly with the data-driven HAC lag,
+  HLN correction, and date-clustered pooling across ETFs. This is the expected outcome for
+  near-random monthly returns and is reported plainly, not buried.
+- **Deferred (not reject), with reasons:** H4 — Mamba ran via the CPU S6 fallback, not the official
+  fused kernel (Risk R6); H5 — no nowcast-task runs in this store; H6a — no NTL-masked-pretrained
+  variant (Tier 2); H6b — foundation models not run (extras/GPU only).
+
+**Statistical rigor (the project's whole point):**
+- **DM (E4):** data-driven Newey-West lag even at H=1 (`floor(4·(T/100)^(2/9))`, Risk R9), HLN
+  small-sample correction, t(T-1); **date-clustered pooling** (mean loss differential per date) so
+  cross-sectional correlation across ETFs is collapsed; realized T recorded, T<30 flagged.
+- **Corrections (E5/E7):** Holm (FWER, primary) + Benjamini-Hochberg (FDR, reported) within each
+  pre-registered family at α=0.10; a "win" needs Holm-p<0.10 AND the right direction.
+- **Directional accuracy** has a one-sided binomial test that dir-acc>0.50 (Risk R24).
+- **Pre-registration frozen** in `configs/hypotheses.yaml` (owner E) + `experiments/PREREG.md`;
+  `prereg.py` loads it so the driver cannot data-snoop.
+
+**Artifacts (real):** `experiments/{results_store.parquet+csv, dm_results.parquet+csv,
+hypotheses_verdict.json}`; `paper/tables/{main_results.md+tex, dm_family_a.md,
+hypotheses_verdict.md}`; `paper/figures/{metric_bars_mse, metric_bars_dir_acc,
+dm_significance_A}.{png,pdf}`.
+
+**Honest limitations carried to the paper:** ~6 folds (low DM power); the screen kept 7/11 sectors
+(H1 evaluated on those with signal); H2/H3 strata are thin (XLE single / XLI multi per
+pre-registration); Mamba is the CPU fallback, not the official kernel.
+
+**Verification.** `pytest -q` 108 passed (no network); `analyze_results.py` exits 0 with the audit
+ALL PASS and a complete H0-H6 verdict; ruff/black clean. **Git:** per-task commits E3, E4, E5, E1/E2,
+E6, E7/E8, E9, E11, E12 on `phaseD-eval-stats`.

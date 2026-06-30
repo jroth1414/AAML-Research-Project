@@ -1,0 +1,44 @@
+# configs/hypotheses.yaml — canonical H0-H6 statements + pre-registered decision rules
+# (OWNER: Phase D / Task E5). prereg.py loads this; the paper's hypothesis text is asserted
+# byte-identical to the `statement` fields. Frozen before the first real results (experiments/PREREG.md).
+schema_version: 1
+
+alpha: 0.10
+primary_loss: mse
+correction_primary: holm        # FWER, within each family (primary verdict)
+correction_secondary: fdr_bh    # FDR, reported alongside
+dl_models: [dlinear, patchtst, itransformer, mamba]
+baselines_for_h1: [momentum, dlinear]
+
+hypotheses:
+  H0:
+    statement: "No deep-learning model significantly beats the 12-month momentum baseline on forward returns."
+    decision: "Holds if H1 is not supported; reported explicitly and honestly (not buried)."
+  H1:
+    statement: "At least one deep model beats BOTH baselines on 1-month return MSE (DM-significant, Holm) AND its directional accuracy is significantly > 0.50 (binomial)."
+    rule:
+      task: leading
+      horizon: 1
+      scope: POOLED
+      need_lower_mse_than: [momentum, dlinear]
+      need_dm_holm_significant_vs: [momentum, dlinear]
+      need_dir_acc_gt: 0.50
+      need_dir_acc_pvalue_lt: 0.10
+  H2:
+    statement: "iTransformer beats PatchTST on multi-region ETFs (e.g. XLI: Pearl River + Yangtze Delta)."
+    rule: { task: leading, horizon: 1, stratum: multi_region, winner: itransformer, loser: patchtst, dm_holm_significant: true }
+  H3:
+    statement: "PatchTST beats iTransformer on single-dominant-region ETFs (e.g. XLE: Permian Basin)."
+    rule: { task: leading, horizon: 1, stratum: single_region, winner: patchtst, loser: itransformer, dm_holm_significant: true }
+  H4:
+    statement: "Mamba is at least as good as both Transformers during disruption months (mean VIX > 25)."
+    rule: { task: leading, horizon: 1, stratum: disruption, model: mamba, not_worse_than: [patchtst, itransformer], note: "fallback impl -> 'support (fallback impl)' or 'deferred' (Risk R6)" }
+  H5:
+    statement: "NTL nowcasts contemporaneous industrial production far better than it leads returns (nowcast R^2 exceeds leading pseudo-R^2 by >= 0.10 absolute)."
+    rule: { gap_min: 0.10, need_nowcast_r2_gt: 0.0, report: [yoy_log, mom_log], paired_per_model: true }
+  H6a:
+    statement: "An NTL-masked-pretrained model beats its identically-sized from-scratch counterpart (same NTL inputs)."
+    rule: { task: leading, horizon: 1, winner_variant: pretrained, loser_variant: scratch, dm_holm_significant: true, deferred_if_no_pretrain: true }
+  H6b:
+    statement: "A foundation model (zero-shot/finetune on target history) beats its size-matched from-scratch counterpart (reference; foundation never sees NTL)."
+    rule: { deferred_if_no_foundation: true }
