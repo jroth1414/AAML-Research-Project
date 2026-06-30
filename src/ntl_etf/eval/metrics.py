@@ -102,6 +102,7 @@ def compute_all_point_metrics(
         "dir_acc": directional_accuracy(y_true, y_pred),
         "dir_acc_pvalue": directional_accuracy_pvalue(y_true, y_pred),
         "pearson": pearson_corr(y_true, y_pred),
+        "oos_r2": nowcast_r2(y_true, y_pred),  # OOS R^2 for BOTH tasks (H5 compares them)
         "n_obs": int(len(np.asarray(y_true))),
     }
     if task == "leading":

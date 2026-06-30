@@ -90,13 +90,20 @@ def decide_hypotheses(results, dm, prereg) -> dict:
         },
     }
 
-    # --- H5: nowcast vs leading R^2 (needs nowcast runs) ---
-    now = _pooled(results, "patchtst", "nowcast_r2", task="nowcast")
-    out["H5"] = (
-        {"verdict": "deferred", "reason": "nowcast-task runs not present in this results store."}
-        if now is None
-        else {"verdict": "support" if now > 0 else "reject", "nowcast_r2": now}
-    )
+    # --- H5: nowcast OOS R^2 >> leading OOS R^2 (gap >= 0.10) ---
+    now = _pooled(results, "patchtst", "oos_r2", task="nowcast")
+    lead = _pooled(results, "patchtst", "oos_r2", task="leading")
+    if now is None:
+        out["H5"] = {"verdict": "deferred", "reason": "no nowcast-task runs in this store."}
+    else:
+        gap = now - (lead if lead is not None else 0.0)
+        out["H5"] = {
+            "verdict": "support" if (gap >= 0.10 and now > 0) else "reject",
+            "nowcast_r2": now,
+            "leading_r2": lead,
+            "gap": gap,
+            "note": "OOS R^2 on contemporaneous IP (nowcast) vs forward returns (leading), paired on PatchTST.",
+        }
 
     # --- H6a: NTL-masked-pretrained vs from-scratch PatchTST (Family D, identical params) ---
     dm_h6a = _dm(dm, "D_transfer", "patchtst_pretrained", "patchtst")
