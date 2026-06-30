@@ -277,3 +277,31 @@ pre-registration); Mamba is the CPU fallback, not the official kernel.
 **Verification.** `pytest -q` 108 passed (no network); `analyze_results.py` exits 0 with the audit
 ALL PASS and a complete H0-H6 verdict; ruff/black clean. **Git:** per-task commits E3, E4, E5, E1/E2,
 E6, E7/E8, E9, E11, E12 on `phaseD-eval-stats`.
+
+---
+
+## Tier-2 follow-up + GPU handoff (M8 pretraining, H5 nowcast, V100) · 2026-06-29 · branch `phaseC-pretrain`
+
+The user has a V100 Ubuntu box coming; the local GPU is a brand-new RTX 5070 Ti (Blackwell sm_120 —
+needs PyTorch ≥2.7/CUDA 12.8 and `mamba-ssm` won't build on native Windows anyway). **Decision:**
+don't fight Blackwell now; do the CPU-feasible un-deferrals here and prepare a turnkey V100 handoff
+for the official-Mamba (H4) work. 117 tests green; ruff/black clean.
+
+- **H6a un-deferred → reject (M8).** Implemented masked self-supervised pretraining of a PatchTST
+  encoder on the full unlabeled NTL corpus (3724 windows; recon loss 6.28→3.00), then a fine-tuned
+  `patchtst_pretrained` variant with **identical params** (67,777) to the from-scratch run.
+  Family-D DM: mean_diff −3e-6, **p_holm = 0.905** → pretraining gives no benefit here. Honest.
+- **H5 un-deferred → reject, but direction is right.** Ran the nowcast task (IP `value_dlog`) for
+  momentum/DLinear/PatchTST and added OOS R² to both tasks. PatchTST **nowcast R² = −0.017 vs
+  leading R² = −0.026** (gap +0.0085). The *sign* supports the coincidence thesis (NTL is more
+  contemporaneous than leading), but both R² are negative and the gap is far below the 0.10 bar — so
+  H5 rejects. A nuanced result worth stating plainly in the paper.
+- **V100 handoff (GP1).** `scripts/run_gpu.sh` installs the extras (mamba-ssm builds cleanly on
+  Volta), runs the **official Mamba kernel** (multi-seed) + GPU foundation references, and prints the
+  bring-back + `merge_results.py` + `analyze_results.py` steps. The verdict now reads `mamba_impl`
+  from the Mamba run manifest: **fallback → H4 deferred; official → H4 decided** from Family C. So a
+  V100 run + re-analyze flips H4 automatically, no code change.
+
+**Verdict set now:** H1 reject · H2 reject · H3 reject · **H4 deferred (→ V100)** · **H5 reject**
+(direction supports coincidence) · **H6a reject** · **H6b support** (Chronos > momentum). **H0 holds.**
+Every hypothesis except H4 is decided on CPU; H4 is one V100 command away.
