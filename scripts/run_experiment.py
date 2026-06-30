@@ -146,6 +146,28 @@ def main() -> int:
         mamba_impl = mc.extra.get("mamba_impl", mamba_impl)
         log.info("fold %d: %d test predictions", fold.fold_id, len(by["test"]))
 
+    # Ensemble per-region CI predictions into one per (sector, date, fold): multiple region series
+    # map to the same ETF, so average y_pred (y_true is identical for a sector at a date) -> A.3.
+    if rows:
+        gdf = pd.DataFrame(rows)
+        keys = [
+            "model",
+            "variant",
+            "pretrained",
+            "task",
+            "target_kind",
+            "etf",
+            "horizon",
+            "fold",
+            "split",
+            "date",
+            "seed",
+        ]
+        rows = (
+            gdf.groupby(keys, as_index=False)
+            .agg(y_true=("y_true", "first"), y_pred=("y_pred", "mean"))
+            .to_dict("records")
+        )
     write_predictions(rows, run_dir)
     n_params = forecaster.n_params() if hasattr(forecaster, "n_params") else 0
     write_manifest(
