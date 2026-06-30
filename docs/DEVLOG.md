@@ -169,3 +169,53 @@ folds_manifest.json}`. **CI-view anchors (L=12,H=1,leading) = 1584 > 1000** (sof
 
 **Verification.** `pytest -q` 74 passed (no network); `build_panel.py` exits 0 with the audit ALL
 PASS; ruff/black clean. **Git:** commits P1-P2, P6, P3/P5, P4/P7, P8/P9, P10 on `phaseB-panel-splits`.
+
+---
+
+## Phase C — Models + training (M1–M17 core) · 2026-06-29 · branch `phaseC-models`
+
+Built the full model layer + deterministic Trainer + the experiment runner; all six models run on
+CPU and produce the Appendix-A.3 `predictions.parquet` contract on the real panel. 90 offline tests
+green; ruff/black clean.
+
+**Models (all validated on real data):**
+- **momentum** (M2): trailing-12m mean of the ETF's own returns (the H0/H1 yardstick; uses return
+  history, not NTL). 864 contract-valid predictions.
+- **DLinear** (M3): moving-avg decomposition + per-component linear heads on the CI NTL window
+  (26 params).
+- **PatchTST** (M5): clean-room patch attention on the CI NTL window (67.8k params). *Clean-room
+  note:* implemented from the published architecture rather than vendoring the thuml library — more
+  self-contained, no heavy external dep, same math (documented for the paper).
+- **iTransformer** (M6): clean-room cross-region (variate) attention; adapted to predict the
+  exogenous ETF return via masked-mean pooling over valid NTL region tokens (72k params, variate
+  view, 216 multi-region predictions).
+- **Mamba** (M7): capability-gated. On this CPU box it runs the **pure-PyTorch S6 fallback** (faithful
+  sequential selective scan), tagged `mamba_impl=fallback` in the manifest so Phase D reports H4
+  honestly (never as the official kernel). 864 predictions.
+- **foundation** (M10, chronos/moirai/timesfm): **skip-and-log** — unavailable on the CPU profile
+  (extras only), writes `skipped.json`, exits 0. Verified.
+
+**Trainer (M9):** one deterministic loop for every torch model — seeded, AdamW, MSE on STANDARDIZED
+targets, grad clipping, early stopping on val with best-weight restore, CPU-first. The PanelDataset
+carries train-only `(y_mu, y_sigma)`; predictions are de-standardized to return units (leakage guard).
+
+**Variate batching fix (M6/P4 reconciliation):** sectors have different variate counts (XLE/XLI=3,
+XLV=2), so variate samples are padded to a global max-V with `var_mask` and zero-filled
+invalid/padded variates (excluded from attention + the pool). This is the batchable resolution of
+the M6-padding vs P4-gather alternatives.
+
+**Preliminary signal (NOT a verdict — default HP, no tuning; significance decided in Phase D).**
+Pooled 1-month-return test MSE / directional accuracy: PatchTST 0.004894 / 0.528, DLinear 0.004950 /
+0.552, Mamba(fallback) 0.005046 / 0.519, **momentum 0.005262 / 0.513**, iTransformer 0.005724 / 0.514
+(iTransformer is on the 216 multi-region samples only, not pool-comparable). So the NTL-based PatchTST
+and DLinear edge out the momentum baseline on pooled MSE — but the gaps are tiny, HP is untuned, and
+with ~6 folds power is low; whether any edge is DM-significant after Holm correction (H1) is the
+Phase-D question. Monthly returns are near-unpredictable, so H0 may well hold — to be reported honestly.
+
+**Remaining Phase C (Tier 2-3, for later):** M8 masked pretraining + pretrained variants (needed for
+H6a; until then H6a is `deferred`), M12 HP search (currently default HP), official Mamba + foundation
+fine-tune (GPU only). The core models make **H1/H2/H3/H4 testable in Phase D**.
+
+**Verification.** `pytest -q` 90 passed (shapes/overfit/determinism + contract, no network);
+all six models produce contract-valid runs (or skip-and-log); ruff/black clean. **Git:** commits
+M1, M2/M3, M9, M4-M6, M7/M10, M13/M15-M17 on `phaseC-models`.
