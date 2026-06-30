@@ -17,7 +17,7 @@ def test_h1_family_has_six_pairs():
 
 
 def test_pairs_reference_known_models():
-    known = set(prereg.DL_MODELS) | {"momentum", "patchtst_pretrained"}
+    known = set(prereg.DL_MODELS) | {"momentum", "patchtst_pretrained", "chronos"}
     for fam in prereg.FAMILIES:
         for a, b in fam["pairs"]:
             assert a in known and b in known
