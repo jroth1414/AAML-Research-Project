@@ -448,6 +448,11 @@ class PanelDataset:
         self.region_id_idx = {r: i for i, r in enumerate(sorted(ntl_wide.columns))}
         self.grid = ntl_wide.index
         self._pos = {d: i for i, d in enumerate(self.grid)}
+        # variate view: pad every sample to a global max-V so batches stack; var_mask + zero-fill
+        # exclude invalid/padded variates from attention (M6/P4 reconciliation).
+        self.max_v = (
+            max((len(a["region_ids"]) for a in anchors), default=1) if spec.view == "variate" else 1
+        )
 
     def __len__(self):
         return len(self.anchors)
@@ -483,20 +488,28 @@ class PanelDataset:
                     "series_idx": torch.tensor(a["series_idx"], dtype=torch.long),
                 }
             )
-        else:  # variate
-            regions = a["region_ids"]
-            cols = []
-            for r in regions:
-                w = self._window(r, a["origin_t"])
-                cols.append(_std(w, self.norms["x"].get(r, (0.0, 1.0))))
-            x = np.stack(cols, axis=1)  # (L, V)
+        else:  # variate (padded to self.max_v with zero columns + var_mask=False)
+            regions = list(a["region_ids"])
+            vmask = list(a["var_mask"])
+            cols, ids, mask = [], [], []
+            for r, valid in zip(regions, vmask, strict=True):
+                cols.append(
+                    _std(self._window(r, a["origin_t"]), self.norms["x"].get(r, (0.0, 1.0)))
+                    if valid
+                    else np.zeros(L, dtype="float32")
+                )
+                ids.append(self.region_id_idx.get(r, -1))
+                mask.append(bool(valid))
+            while len(cols) < self.max_v:  # pad to global max-V
+                cols.append(np.zeros(L, dtype="float32"))
+                ids.append(-1)
+                mask.append(False)
+            x = np.stack(cols, axis=1)  # (L, max_v)
             base.update(
                 {
-                    "x": torch.tensor(x, dtype=torch.float32).reshape(L, len(regions)),
-                    "region_ids": torch.tensor(
-                        [self.region_id_idx.get(r, -1) for r in regions], dtype=torch.long
-                    ),
-                    "var_mask": torch.tensor(list(a["var_mask"]), dtype=torch.bool),
+                    "x": torch.tensor(x, dtype=torch.float32).reshape(L, self.max_v),
+                    "region_ids": torch.tensor(ids, dtype=torch.long),
+                    "var_mask": torch.tensor(mask, dtype=torch.bool),
                     "group_idx": torch.tensor(a["group_idx"], dtype=torch.long),
                 }
             )
