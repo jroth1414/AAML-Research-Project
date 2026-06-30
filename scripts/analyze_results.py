@@ -55,7 +55,16 @@ def main() -> int:
         int((dm["win"] != "none").sum()),
     )
 
-    verdicts = verdict.decide_hypotheses(agg, dm, prereg)
+    # H4 is decided only on the official Mamba kernel; read mamba_impl from its run manifest.
+    mamba_impl = "fallback"
+    for mdir in Path(args.experiments_dir).glob("mamba__*"):
+        mf = mdir / "manifest.json"
+        if mf.exists():
+            impl = json.loads(mf.read_text(encoding="utf-8")).get("mamba_impl")
+            if impl:
+                mamba_impl = impl
+    log.info("mamba_impl detected: %s", mamba_impl)
+    verdicts = verdict.decide_hypotheses(agg, dm, prereg, mamba_impl=mamba_impl)
     (Path(args.experiments_dir) / "hypotheses_verdict.json").write_text(
         json.dumps(verdicts, indent=2, default=str), encoding="utf-8"
     )

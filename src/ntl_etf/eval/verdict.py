@@ -29,7 +29,7 @@ def _dm(dm, family, a, b, stratum=None):
     return q.iloc[0].to_dict() if len(q) else None
 
 
-def decide_hypotheses(results, dm, prereg) -> dict:
+def decide_hypotheses(results, dm, prereg, mamba_impl: str = "fallback") -> dict:
     alpha = prereg.ALPHA
     out = {}
 
@@ -78,17 +78,31 @@ def decide_hypotheses(results, dm, prereg) -> dict:
     out["H2"] = _arch_verdict(dm_h2, want_winner="itransformer")
     out["H3"] = _arch_verdict(dm_h3, want_winner="patchtst")
 
-    # --- H4: Mamba in disruption (fallback impl -> deferred, Risk R6) ---
-    out["H4"] = {
-        "verdict": "deferred",
-        "reason": "Mamba ran via the CPU pure-PyTorch S6 fallback, not the official fused kernel; "
-        "H4 is not decided on the official implementation (Risk R6/R14).",
-        "evidence": {
-            "mamba_mse_disruption": _pooled(results, "mamba", "mse", "disruption"),
-            "patchtst_mse_disruption": _pooled(results, "patchtst", "mse", "disruption"),
-            "itransformer_mse_disruption": _pooled(results, "itransformer", "mse", "disruption"),
-        },
+    # --- H4: Mamba >= both Transformers in disruption (Family C). On the CPU S6 fallback this is
+    # DEFERRED (Risk R6); on the official kernel (mamba_impl='official', e.g. the V100) it is decided.
+    ev_h4 = {
+        "mamba_mse_disruption": _pooled(results, "mamba", "mse", "disruption"),
+        "patchtst_mse_disruption": _pooled(results, "patchtst", "mse", "disruption"),
+        "itransformer_mse_disruption": _pooled(results, "itransformer", "mse", "disruption"),
+        "mamba_impl": mamba_impl,
     }
+    if mamba_impl != "official":
+        out["H4"] = {
+            "verdict": "deferred",
+            "reason": "Mamba ran via the CPU pure-PyTorch S6 fallback, not the official fused kernel "
+            "(Risk R6/R14). Re-run on a CUDA GPU (mamba_impl='official') to decide H4.",
+            "evidence": ev_h4,
+        }
+    else:
+        c1 = _dm(dm, "C_disruption", "mamba", "patchtst", stratum="disruption")
+        c2 = _dm(dm, "C_disruption", "mamba", "itransformer", stratum="disruption")
+        worse = any(c and c.get("win") in ("patchtst", "itransformer") for c in (c1, c2))
+        beats_one = any(c and c.get("win") == "mamba" for c in (c1, c2))
+        out["H4"] = {
+            "verdict": "reject" if worse else ("support" if beats_one else "support"),
+            "note": "official Mamba kernel" + (" (beats >=1 Transformer)" if beats_one else ""),
+            "evidence": ev_h4,
+        }
 
     # --- H5: nowcast OOS R^2 >> leading OOS R^2 (gap >= 0.10) ---
     now = _pooled(results, "patchtst", "oos_r2", task="nowcast")
