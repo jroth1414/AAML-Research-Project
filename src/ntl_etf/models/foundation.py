@@ -36,27 +36,48 @@ class FoundationForecaster(BaseForecaster):
         self.name = config.extra.get("foundation", config.name)
         self.target_wide = target_wide
         self._pos = {d: i for i, d in enumerate(target_wide.index)}
+        self._pipe = None
         if not foundation_available(self.name):
             raise FoundationUnavailable(
-                f"{self.name} ({_PKG.get(self.name)}) not installed; install requirements-extras.txt "
-                "on a GPU/Linux profile. Skipping (skip-and-log)."
+                f"{self.name} ({_PKG.get(self.name)}) not installed. Chronos is CPU-installable "
+                "(`pip install chronos-forecasting`); TimesFM/Moirai prefer GPU (requirements-extras.txt)."
             )
 
     def fit(self, train_ds=None, val_ds=None) -> FoundationForecaster:
         self.is_fit = True
         return self
 
+    def _pipeline(self):  # pragma: no cover - requires the chronos package + a model download
+        if self._pipe is None:
+            from chronos import BaseChronosPipeline  # type: ignore
+
+            model = self.config.extra.get("chronos_model", "amazon/chronos-bolt-small")
+            self._pipe = BaseChronosPipeline.from_pretrained(model, device_map="cpu")
+        return self._pipe
+
     def predict(self, dataset) -> np.ndarray:  # pragma: no cover - requires extras
         import torch
-        from chronos import ChronosPipeline  # type: ignore
 
-        pipe = ChronosPipeline.from_pretrained("amazon/chronos-bolt-small", device_map="cpu")
-        preds = []
+        pipe = self._pipeline()
+        h = self.config.H
+        preds, cache = [], {}
+        # context = the target's own history up to (and including) the origin month t -> forecast t+1
+        # (a leakage-safe, no-NTL time-series reference; Chronos normalizes scale internally).
+        # The forecast depends only on (sector, origin) -> cache to skip redundant region anchors.
         for a in dataset.anchors:
-            t = pd.Timestamp(a["origin_t"])
             s = a["sector"]
-            i = self._pos[t]
-            ctx = self.target_wide[s].iloc[: i + 1].dropna().to_numpy()
-            fc = pipe.predict(torch.tensor(ctx).unsqueeze(0), prediction_length=self.config.H)
-            preds.append(np.asarray(fc).reshape(-1)[: self.config.H])
+            i = self._pos[pd.Timestamp(a["origin_t"])]
+            key = (s, i)
+            if key not in cache:
+                ctx = self.target_wide[s].iloc[: i + 1].dropna().to_numpy()
+                if len(ctx) < 2:
+                    cache[key] = [0.0] * h
+                else:
+                    _, mean = pipe.predict_quantiles(
+                        torch.tensor(ctx, dtype=torch.float32),
+                        prediction_length=h,
+                        quantile_levels=[0.5],
+                    )
+                    cache[key] = np.asarray(mean).reshape(-1)[:h].tolist()
+            preds.append(cache[key])
         return np.asarray(preds, dtype="float64")

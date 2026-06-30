@@ -107,10 +107,20 @@ def decide_hypotheses(results, dm, prereg) -> dict:
             "verdict": "support" if pre < (_pooled(results, "patchtst", "mse") or 9e9) else "reject"
         }
     )
-    out["H6b"] = {
-        "verdict": "deferred",
-        "reason": "foundation models not run (GPU/extras profile).",
-    }
+    dm_h6b = _dm(dm, "E_foundation", "chronos", "momentum")
+    if dm_h6b is None or dm_h6b.get("n", 0) < 3:
+        out["H6b"] = {
+            "verdict": "deferred",
+            "reason": "no foundation (Chronos) runs in this store.",
+        }
+    else:
+        out["H6b"] = {
+            "verdict": "support" if dm_h6b["win"] == "chronos" else "reject",
+            "win": dm_h6b["win"],
+            "p_holm": dm_h6b["p_holm"],
+            "n": dm_h6b["n"],
+            "note": "Chronos zero-shot vs momentum (no-NTL return-history reference; R23 H6b).",
+        }
 
     for k, v in out.items():
         if isinstance(v, dict) and "verdict" in v:

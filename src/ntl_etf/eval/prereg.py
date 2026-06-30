@@ -67,4 +67,15 @@ FAMILIES = [
         "scope": "POOLED",
         "pairs": [("patchtst_pretrained", "patchtst")],
     },
+    {
+        # H6b reference: foundation (Chronos zero-shot on target return history) vs the naive
+        # return-history baseline (momentum). Both are NO-NTL forecasters (Risk R23 split).
+        "name": "E_foundation",
+        "hypothesis": "H6b",
+        "task": "leading",
+        "horizon": 1,
+        "stratum": "all",
+        "scope": "POOLED",
+        "pairs": [("chronos", "momentum")],
+    },
 ]

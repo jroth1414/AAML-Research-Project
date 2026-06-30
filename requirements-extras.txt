@@ -9,7 +9,11 @@ mamba-ssm>=2.2          # selective state-space (S6) fused kernel; CUDA + Linux 
 causal-conv1d>=1.4      # dependency of mamba-ssm; CUDA kernels
 triton>=2.3             # mamba-ssm runtime dep; Linux/CUDA only
 
+# chronos-forecasting is actually CPU-INSTALLABLE and runs zero-shot on CPU (small/bolt variants) —
+# install it on the Windows/CPU profile too to enable the H6b foundation reference:
+#   pip install chronos-forecasting
+# (it pulls transformers/accelerate but not the CUDA toolchain). uni2ts/timesfm prefer GPU.
 chronos-forecasting>=1.4
-uni2ts>=1.2             # Moirai
-timesfm[torch]>=1.2
+uni2ts>=1.2             # Moirai (GPU-preferred)
+timesfm[torch]>=1.2     # GPU-preferred
 einops>=0.8
