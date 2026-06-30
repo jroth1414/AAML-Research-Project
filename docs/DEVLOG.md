@@ -241,7 +241,19 @@ end-to-end** on the actual predictions. 108 offline tests green; ruff/black clea
   near-random monthly returns and is reported plainly, not buried.
 - **Deferred (not reject), with reasons:** H4 — Mamba ran via the CPU S6 fallback, not the official
   fused kernel (Risk R6); H5 — no nowcast-task runs in this store; H6a — no NTL-masked-pretrained
-  variant (Tier 2); H6b — foundation models not run (extras/GPU only).
+  variant (Tier 2).
+
+**Addendum — H6b enabled (Chronos zero-shot on CPU).** `chronos-forecasting` was lumped with the
+GPU-only extras and skip-and-logged, but Chronos zero-shot is actually CPU-feasible (M10). Installed
+`chronos-forecasting` (torch pin intact), fixed `foundation.py` for the 2.3.0 API
+(`BaseChronosPipeline` / `predict_quantiles(inputs,...)`, model `amazon/chronos-bolt-small`, pipeline
+cached + per-(sector,date) memoized), and ran the zero-shot reference (504 predictions). Added a
+pre-registered family E (Chronos vs momentum — both NO-NTL return-history forecasters, Risk R23
+split) and the H6b verdict logic. **Result: H6b = support** — Chronos beats momentum at next-month
+return prediction (mean_diff −0.000192, **p_holm = 0.049**, n=72). The foundation prior has *modest*
+value over naive momentum; it says nothing about NTL (it never sees NTL). Reproducing H6b needs
+`pip install chronos-forecasting` (CPU-ok); the run skip-and-logs if absent. Mamba's official kernel
+and TimesFM/Moirai fine-tune stay correctly deferred (GPU).
 
 **Statistical rigor (the project's whole point):**
 - **DM (E4):** data-driven Newey-West lag even at H=1 (`floor(4·(T/100)^(2/9))`, Risk R9), HLN
