@@ -52,6 +52,10 @@ def _build_forecaster(model: str, mc: ModelConfig, returns, ip, train_cfg):
         from ntl_etf.models.mamba import mamba_factory
 
         return DeepForecaster(mc, mamba_factory, train_cfg)
+    if model == "patchtst_pretrained":
+        from ntl_etf.models.pretrain import pretrained_patchtst_factory
+
+        return DeepForecaster(mc, pretrained_patchtst_factory, train_cfg)
     if model in FOUNDATION:
         from ntl_etf.models.foundation import FoundationForecaster
 
@@ -101,6 +105,16 @@ def main() -> int:
     folds = walk_forward_splits(grid, cfg)
     if args.smoke:
         folds = folds[:1]
+
+    # H6a: ensure the masked-pretrained PatchTST encoder exists, then fine-tune from it.
+    if args.model == "patchtst_pretrained":
+        from ntl_etf.models.pretrain import pretrain_patchtst
+
+        ckpt = "experiments/_pretrained/patchtst.pt"
+        if not Path(ckpt).exists():
+            log.info("pretraining PatchTST encoder on the unlabeled NTL corpus (M8)...")
+            pretrain_patchtst(ntl_wide, mc, ckpt, steps=30 if args.smoke else 800, seed=args.seed)
+        mc.extra["pretrained_ckpt"] = ckpt
 
     from ntl_etf.train.trainer import TrainConfig
 
