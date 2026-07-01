@@ -36,11 +36,11 @@ green, ruff+black clean). RESUME POINT → (1) apply the two REQUIRED MS1/MS2 co
 > These are promoted to **hard prerequisites of the first training run** (not deferred to "hardening").
 > Do not present any MS4 run command as runnable until §4.1, §4.3, and all of MS3 are built.
 
-- **Active branch: `ms2-models`** — all WIP lives here (`d739c58`). `main` is a **single clean commit**
-  (`46f8057`, John Roth only) with **only the scaffold**; `build_index`, `zoo.py`, `lit.py`, etc. do
-  **NOT exist on `main`**. **A truly fresh checkout lands on `main` (default) and will NOT match this
-  plan.** `git checkout ms2-models` is the **literal first step of setup** (§2). Branch new phase work
-  off `ms2-models`, never off `main`.
+- **Branches.** `main` is the **canonical branch** and contains everything through this hardened plan
+  (MS0–MS2 code + the DEVPLAN); `ms2-models` is kept as a mirror at the same commit. **A fresh checkout
+  of `main` matches this plan — no branch switch is needed.** Every commit is authored by **John Roth**
+  only (no AI co-authors). Branch new phase work off `main` (e.g. `phase-ms3-eval`).
+  `project/ntl-sector-etf-forecasting` is an unrelated archived project — ignore it.
 - **DONE (do NOT rebuild — but see the two defects above):**
   - `src/marsseg/utils/*` (seed, config, manifest, results, tracking, logging, capabilities)
   - `src/marsseg/data/{ai4mars,dataset,transforms}.py` — **`ai4mars.build_index` needs the §4.1 + §4.3
@@ -93,7 +93,7 @@ bottom). Update §0 here and README §Status at the end of each phase.
    `marsseg.utils.seed.BOOTSTRAP_SEED = 0` — **not** 1414. `SEED_SET=[1414,1415,1416,1417,1418]` is an
    OPTIONAL multi-seed robustness appendix, not the reported number.
 6. **Work task-by-task.** One local commit per task; the message is **prefixed with the phase/task ID**
-   (e.g. `MS3: add eval/metrics.py`). One **branch per phase**, branched off `ms2-models`
+   (e.g. `MS3: add eval/metrics.py`). One **branch per phase**, branched off `main`
    (e.g. `phase-ms3-eval`). **Commit LOCALLY only — DO NOT push unless the user explicitly asks.**
    **PAUSE at every phase gate for user review** before starting the next phase.
 7. **The local RTX 5070 Ti (Blackwell) is intentionally UNUSED for training.** Do not target it. CPU
@@ -111,9 +111,9 @@ bottom). Update §0 here and README §Status at the end of each phase.
 
 **Setup (Windows / CPU — the dev + smoke profile), from repo root, IN ORDER:**
 ```powershell
-# STEP 0 (MANDATORY): a fresh checkout defaults to `main`, which lacks build_index/zoo.py/lit.py.
-# Switch to the working branch BEFORE creating the venv or installing anything.
-git checkout ms2-models
+# STEP 0: `main` is the canonical branch and already matches this plan (no switch needed).
+# If you are on another branch after cloning, check out main first.
+git checkout main
 
 C:/Users/Admin/AppData/Local/Programs/Python/Python311/python.exe -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -U pip
@@ -157,7 +157,7 @@ not a gate.)
 
 **GPU handoff (V100 / Ubuntu) — `scripts/run_gpu.sh` (TO BUILD, MS4).** It is a **bash** script (NOT
 PowerShell) that MUST:
-1. `git checkout ms2-models` (or the merged phase branch) first, then `python3.11 -m venv .venv`.
+1. `git checkout main` (or the merged phase branch) first, then `python3.11 -m venv .venv`.
 2. `.venv/bin/python -m pip install -r requirements.txt`, then **reinstall a CUDA torch build**
    because `requirements.txt` resolves to the CPU wheel:
    `.venv/bin/python -m pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu121`.
