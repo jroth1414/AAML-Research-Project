@@ -1,6 +1,6 @@
 # requirements.txt (CORE — Windows/CPU clean install) for the Mars terrain-segmentation project.
 # Everything here installs on native Windows/CPU and powers the full pipeline EXCEPT heavy GPU
-# training (done on the V100) and the SAM/DINOv2 foundation models (requirements-extras.txt).
+# training (done on the V100) and the SAM/DINOv3 foundation models (requirements-extras.txt).
 
 # --- numerical / data core ---
 numpy>=1.26,<2.1

@@ -232,10 +232,10 @@ in §5.6 and are the single source of truth for every hypothesis below.
    `foundation.py` must FIRST check `os.environ.get("HF_TOKEN")` and, if absent (or cuda absent, or
    SAM checkpoint absent), **skip-and-log** (append a `status="skipped"` results row, record in
    `manifest.gpu_stages_skipped`, return) rather than raise. Never hard-crash the pipeline on CPU.
-5. **MS0 fix task:** rewrite `.env.example` to (a) drop the false "NO credentials required" framing for
-   H5, (b) say **DINOv3** (not DINOv2), (c) mark `HF_TOKEN` **required-for-H5**; and purge the stale
-   `EARTHDATA_TOKEN`/`FRED_API_KEY` from the live `.env`. (Cosmetic: `capabilities.py` doc-comment also
-   says "DINOv2" — fix the comment to DINOv3 while there; no behavior change.)
+5. **MS0 fix task (remaining):** rewrite `.env.example` to (a) drop the false "NO credentials required"
+   framing for H5 and (b) mark `HF_TOKEN` **required-for-H5**; and purge the stale
+   `EARTHDATA_TOKEN`/`FRED_API_KEY` from the live `.env`. (The stale **DINOv2→DINOv3** naming in
+   `.env.example`, `README.md`, `requirements.txt`, and `capabilities.py` has already been corrected.)
 
 ---
 

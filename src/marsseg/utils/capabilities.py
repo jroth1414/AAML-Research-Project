@@ -1,7 +1,7 @@
 """Capability detection: discover the hardware/library profile.
 
 Segmentation training is GPU-bound. CPU is fine for the full pipeline + smoke tests; full training
-runs on the V100. SAM / DINOv2 foundation models (H5) are gated behind these flags and degrade
+runs on the V100. SAM / DINOv3 foundation models (H5) are gated behind these flags and degrade
 gracefully (skip-and-log) when the package or hardware is absent.
 """
 
@@ -45,7 +45,7 @@ class Capabilities:
     smp: bool  # segmentation-models-pytorch (U-Net/DeepLab)
     transformers: bool  # SegFormer
     sam: bool  # Meta Segment-Anything (foundation, H5)
-    timm: bool  # DINOv2 / ViT backbones (foundation, H5)
+    timm: bool  # DINOv3 / ViT backbones (foundation, H5)
     profile: str  # "windows_cpu" | "gpu_full"
 
 

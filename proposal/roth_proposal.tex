@@ -77,7 +77,7 @@ SegDataset: ignore-mask handling, by-image splits, class-weighted loss
    +----+--------------------+--------------------+-----------------+
    v                         v                    v                 v
 Baseline U-Net      U-Net / DeepLabV3+        SegFormer        Foundation
-(from scratch)      (ImageNet vs scratch)    (MiT encoder)    (SAM / DINOv2)
+(from scratch)      (ImageNet vs scratch)    (MiT encoder)    (SAM / DINOv3)
    |                         |                    |                 |
    +----------> CE + Dice loss (ignore_index), AdamW, AMP on GPU <--+
         |
@@ -90,7 +90,7 @@ Paired bootstrap + McNemar (Holm)  ->  per-class & cross-rover stratified analys
 \begin{itemize}
   \item Build a reproducible, leakage-safe AI4Mars segmentation pipeline (by-image splits;
   ignore-mask exclusion from loss and metrics).
-  \item Compare CNN (U-Net, DeepLabV3+) vs.\ transformer (SegFormer) vs.\ foundation (SAM/DINOv2)
+  \item Compare CNN (U-Net, DeepLabV3+) vs.\ transformer (SegFormer) vs.\ foundation (SAM/DINOv3)
   architectures under one training recipe.
   \item Quantify the value of ImageNet transfer learning vs.\ from-scratch training.
   \item Test cross-rover generalization (Curiosity $\rightarrow$ Opportunity/Spirit) and whether
@@ -140,7 +140,7 @@ implying that architecture and transfer choices do not matter for this task.
   cosine schedule, early stopping on val mIoU).
   \item Train SegFormer (hierarchical MiT encoder) as the transformer arm.
   \item Evaluate a foundation reference: SAM zero-shot mask proposals mapped to terrain classes,
-  and/or a DINOv2 backbone with a trained segmentation head.
+  and/or a DINOv3 backbone with a trained segmentation head.
   \item Evaluate on the expert test set and the cross-rover (MER) set; compare all models with a
   pre-registered paired bootstrap / McNemar test under Holm correction.
 \end{enumerate}
@@ -301,7 +301,7 @@ only for the best validated configuration per model.
   \item \texttt{PyTorch} / \texttt{torchvision} --- model implementation and training.
   \item \texttt{segmentation-models-pytorch} --- U-Net / DeepLabV3+ with ImageNet-pretrained encoders.
   \item \texttt{transformers} --- SegFormer (MiT) segmentation; \texttt{segment-anything}, \texttt{timm}
-  (DINOv2) --- foundation references.
+  (DINOv3) --- foundation references.
   \item \texttt{albumentations}, \texttt{opencv}, \texttt{scikit-image} --- image IO, augmentation,
   boundary metrics.
   \item \texttt{scikit-learn} / \texttt{scipy} --- bootstrap CIs, McNemar test, multiple-comparison

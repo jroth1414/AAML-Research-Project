@@ -6,7 +6,7 @@ Deep semantic segmentation of Martian terrain (*soil, bedrock, sand, big rock*) 
 images — the core perception task for autonomous **drivability** — on NASA's **AI4Mars** dataset. We
 compare CNN (U-Net, DeepLabV3+) vs transformer (SegFormer) architectures, quantify the value of
 **ImageNet transfer**, test **cross-rover generalization** (Curiosity → Opportunity/Spirit), and
-benchmark a **foundation-model reference** (SAM / DINOv2), under a leakage-safe, pre-registered,
+benchmark a **foundation-model reference** (SAM / DINOv3), under a leakage-safe, pre-registered,
 significance-tested protocol.
 
 See **[`DEVPLAN.md`](DEVPLAN.md)** for the full plan (research question, hypotheses H0–H5, method,
@@ -33,7 +33,7 @@ C:/Users/Admin/AppData/Local/Programs/Python/Python311/python.exe -m venv .venv
 ```
 
 The full pipeline + smoke tests run CPU-only. Full model training runs on a CUDA GPU (the V100) via
-`scripts/run_gpu.sh`; the SAM/DINOv2 foundation models live in `requirements-extras.txt`.
+`scripts/run_gpu.sh`; the SAM/DINOv3 foundation models live in `requirements-extras.txt`.
 
 ## Status
 
